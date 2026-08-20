@@ -1,0 +1,10 @@
+/.agents
+/.env
+/.streamlit
+/.venv
+/DESIGN.md
+/docs
+/dummy.mp3
+/dummy.txt
+/PRODUCT.md
+/__pycache__

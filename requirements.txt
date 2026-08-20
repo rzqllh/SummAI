@@ -1,0 +1,10 @@
+streamlit
+groq
+google-genai
+pydub
+python-dotenv
+audioop-lts
+
+fastapi
+uvicorn
+python-multipart
