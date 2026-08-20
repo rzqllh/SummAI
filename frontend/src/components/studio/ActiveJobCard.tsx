@@ -6,13 +6,12 @@ import {
   Video,
   FileText,
   X,
-  RefreshCw,
   Globe,
   Gauge,
   ShieldCheck,
   AudioLines,
-  Sparkles,
 } from "lucide-react";
+import { MorphIcon, IconNode } from "morphicons/react";
 import { Button } from "@/components/ui/button";
 
 interface ActiveJobCardProps {
@@ -24,6 +23,18 @@ interface ActiveJobCardProps {
   onCancel: () => void;
   isProcessing: boolean;
 }
+
+const STAGE_ICON_NODES: Record<"extract" | "transcribe" | "structure", IconNode> = {
+  extract: [
+    ["path", { d: "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z M19 10v2a7 7 0 0 1-14 0v-2 M12 19v4 M8 23h8" }],
+  ],
+  transcribe: [
+    ["path", { d: "M2 10v3 M6 6v11 M10 3v18 M14 8v7 M18 5v13 M22 10v3" }],
+  ],
+  structure: [
+    ["path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 15l2 2 4-4" }],
+  ],
+};
 
 export function ActiveJobCard({
   filename,
@@ -73,12 +84,64 @@ export function ActiveJobCard({
     return <FileText className="w-5 h-5 text-emerald-400" />;
   };
 
+  // Stage classification based on verified caller upload & transcription pipeline:
+  // - 0% to 35%: Uploading file & native FFmpeg audio stream extraction
+  // - 35% to 80%: Groq Whisper Large-v3 speech-to-text inference
+  // - >80%: Finalizing transcript formatting and preparing review step
+  const currentStage: "extract" | "transcribe" | "structure" =
+    progress < 35 ? "extract" : progress <= 80 ? "transcribe" : "structure";
+
+  const stageLabels = {
+    extract: "Extracting Media Stream",
+    transcribe: "Transcribing via Whisper",
+    structure: "Finalizing Transcript",
+  };
+
+  const stageBadges = {
+    extract: "Extracting",
+    transcribe: "Transcribing",
+    structure: "Finalizing",
+  };
+
   return (
     <div className="glass-card rounded-2xl p-6 border border-slate-800/80 bg-slate-950/60 shadow-xl space-y-6 animate-in fade-in duration-300">
-      {/* Header with spinner */}
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-        <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
-        <span className="tracking-wide">Uploading & Transcribing</span>
+      {/* Stage-Aware Header with MorphIcon and Live Waveform (Motion Point #4) */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5 text-xs font-semibold text-slate-200">
+          <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <MorphIcon
+              icon={STAGE_ICON_NODES[currentStage]}
+              size={14}
+              color="#34d399"
+              reducedMotion="user"
+            />
+          </div>
+          <span className="tracking-wide">{stageLabels[currentStage]}</span>
+        </div>
+
+        {/* Live Waveform Bar Visualization */}
+        <div className="flex items-center gap-1 h-5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800">
+          {[28, 65, 40, 85, 55, 90, 35, 75, 45, 80, 60, 30].map((baseH, i) => {
+            const dynamicH = isProcessing
+              ? Math.max(
+                  20,
+                  Math.min(
+                    100,
+                    baseH +
+                      Math.sin(elapsedSeconds * 3 + i * 0.7) * 35 +
+                      (progress % 15)
+                  )
+                )
+              : 25;
+            return (
+              <div
+                key={i}
+                className="w-1 bg-emerald-400 rounded-full transition-all duration-300"
+                style={{ height: `${dynamicH}%` }}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {/* Media Details Box */}
@@ -103,8 +166,8 @@ export function ActiveJobCard({
         </div>
 
         <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
-          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-            Transcribing
+          <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold font-mono">
+            {stageBadges[currentStage]}
           </span>
 
           <Button
@@ -112,7 +175,7 @@ export function ActiveJobCard({
             variant="outline"
             size="sm"
             onClick={onCancel}
-            className="h-8 px-3 rounded-xl border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-rose-400 text-xs flex items-center gap-1.5 transition-colors"
+            className="h-8 px-3 rounded-xl border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-rose-400 text-xs flex items-center gap-1.5 transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0"
           >
             <X className="w-3.5 h-3.5" />
             <span>Cancel</span>

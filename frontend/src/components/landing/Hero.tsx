@@ -5,8 +5,6 @@ import {
   Sparkles,
   ArrowRight,
   Zap,
-  Shield,
-  FileCheck,
   Play,
   Copy,
   CheckCircle2,
@@ -25,21 +23,23 @@ export function Hero() {
 
   return (
     <section className="relative pt-12 pb-20 md:pt-20 md:pb-28 overflow-hidden">
-      {/* Background ambient glowing mesh */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-emerald-500/15 via-cyan-500/10 to-transparent blur-3xl rounded-full pointer-events-none" />
+      {/* Background ambient lighting */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-emerald-500/10 via-cyan-500/5 to-transparent blur-3xl rounded-full pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center max-w-3xl mx-auto space-y-6">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-emerald-500/30 shadow-lg shadow-emerald-500/10 text-xs font-medium text-emerald-300">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-medium text-emerald-400">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
             <span>Groq Whisper Turbo + Gemini Flash Engine</span>
           </div>
 
-          {/* Main Title */}
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.15]">
-            Turn Unstructured Meetings into{" "}
-            <span className="gradient-text-emerald">Actionable Intel</span>
+          {/* Main Title with Fraunces font-display */}
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.15] font-display">
+            Bilingual discussions move fast. Your meeting notes{" "}
+            <span className="text-emerald-400 font-normal italic">
+              shouldn&apos;t lag behind.
+            </span>
           </h1>
 
           {/* Subtitle */}
@@ -54,23 +54,23 @@ export function Hero() {
             <Link href="/dashboard/summarizer" className="w-full sm:w-auto">
               <Button
                 size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-7 h-12 rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-7 h-12 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0"
               >
                 <Zap className="w-4 h-4 fill-slate-950" />
-                <span>Start Summarizer Studio</span>
+                <span>Start a Summary</span>
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
 
-            <Link href="/dashboard" className="w-full sm:w-auto">
+            <a href="#comparison" className="w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="lg"
-                className="w-full sm:w-auto border-slate-800 bg-slate-900/80 hover:bg-slate-800/80 text-slate-200 font-semibold px-6 h-12 rounded-xl transition-all"
+                className="w-full sm:w-auto border-slate-800 bg-slate-900/80 hover:bg-slate-800/80 text-slate-200 font-semibold px-6 h-12 rounded-xl transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0"
               >
-                <span>View Dashboard</span>
+                <span>See Live Example</span>
               </Button>
-            </Link>
+            </a>
           </div>
 
           {/* Trust Highlights */}
@@ -90,22 +90,23 @@ export function Hero() {
           </div>
         </div>
 
-        {/* Floating App Preview Mockup */}
-        <div className="mt-14 max-w-5xl mx-auto rounded-2xl p-1 bg-gradient-to-b from-slate-700/50 via-slate-800/30 to-slate-900/50 shadow-2xl shadow-emerald-950/40">
-          <div className="rounded-xl bg-slate-950/90 border border-slate-800/80 overflow-hidden">
-            {/* Mockup Window Bar */}
-            <div className="px-4 py-3 bg-slate-900/80 border-b border-slate-800/80 flex items-center justify-between">
+        {/* Product Preview Mockup */}
+        <div className="mt-14 max-w-5xl mx-auto rounded-2xl p-px bg-slate-800/80 shadow-2xl shadow-emerald-950/20">
+          <div className="rounded-2xl bg-slate-950 border border-slate-800/80 overflow-hidden">
+            {/* Mockup Window Bar - neutral dots */}
+            <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500/80" />
-                <span className="w-3 h-3 rounded-full bg-amber-500/80" />
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
                 <span className="ml-2 text-xs font-mono text-slate-400">
                   sprint-retrospective-q3.mp4 • Synthesized via Gemini Flash
                 </span>
               </div>
               <button
+                type="button"
                 onClick={copyHeroSummary}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1.5 py-0.5"
               >
                 {copied ? (
                   <>

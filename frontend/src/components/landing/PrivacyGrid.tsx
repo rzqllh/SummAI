@@ -1,68 +1,88 @@
 "use client";
 
-import { ShieldCheck, Key, HardDrive, DollarSign } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 
 export function PrivacyGrid() {
-  const highlights = [
+  const shouldReduceMotion = useReducedMotion();
+
+  const points = [
     {
-      icon: HardDrive,
-      title: "100% Local SQLite Database",
-      desc: "All meeting logs, raw audio transcripts, and synthesized markdown files are stored in your local SQLite DB. Zero telemetry.",
+      label: "LOCAL SQLITE",
+      title: "Local Database File on Disk",
+      description:
+        "All meeting records, word-for-word transcripts, and synthesized markdown summaries are saved directly to your local SQLite database. Zero telemetry and zero remote database sync.",
     },
     {
-      icon: Key,
-      title: "Bring Your Own API Keys",
-      desc: "Direct integration with your Groq and Gemini API keys. No middleware proxy reading or retaining your corporate IP.",
+      label: "BRING YOUR OWN KEYS",
+      title: "Direct API Key Connection",
+      description:
+        "Direct integration with your personal Groq and Google Gemini API keys. No middleware proxy reading, caching, or training on your proprietary discussions.",
     },
     {
-      icon: DollarSign,
-      title: "Zero SaaS Subscription Cost",
-      desc: "Forget $30/month per seat AI meeting tools. Groq Whisper and Gemini Flash provide pennies-per-hour transcription efficiency.",
+      label: "NO SUBSCRIPTION",
+      title: "Zero Per-Seat SaaS Lock-In",
+      description:
+        "Forget $30/month per-seat AI meeting tools. Groq Whisper and Gemini Flash provide transcription and synthesis within generous free tiers and pennies-per-hour pay-as-you-go rates.",
     },
     {
-      icon: ShieldCheck,
-      title: "Self-Hostable Architecture",
-      desc: "FastAPI backend and Next.js frontend runs completely standalone on your local machine or private VPC cluster.",
+      label: "SELF-HOSTABLE",
+      title: "Standalone Python & Next.js Architecture",
+      description:
+        "FastAPI backend and Next.js frontend run completely standalone on your local machine or inside your private VPC cluster.",
     },
   ];
 
   return (
-    <section id="privacy" className="py-20 border-t border-slate-800/80 relative">
+    <motion.section
+      id="privacy"
+      initial={shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+      className="py-20 border-t border-slate-800/80 relative"
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold uppercase tracking-wider">
-            <span>Security & Cost Efficiency</span>
+        {/* Section Eyebrow */}
+        <div className="mb-8">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold uppercase tracking-wider font-mono">
+            <span>Security & Cost Architecture</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-            Built for Privacy-First Engineering Teams
-          </h2>
-          <p className="text-slate-400 text-sm sm:text-base">
-            Never compromise sensitive roadmap discussions or internal retrospectives.
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {highlights.map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <div
-                key={i}
-                className="glass-card rounded-2xl p-6 border border-slate-800 space-y-3 glass-card-hover"
-              >
-                <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400">
-                  <Icon className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-semibold text-white">
-                  {item.title}
+        {/* Large Statement Line */}
+        <div className="max-w-4xl mb-16">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white font-display leading-[1.2]">
+            No cloud databases. No per-seat subscriptions. Your meeting records never leave your control.
+          </h2>
+        </div>
+
+        {/* Typographic List-Strip with Hairline Borders */}
+        <div className="divide-y divide-slate-800/80 border-y border-slate-800/80">
+          {points.map((point) => (
+            <div
+              key={point.label}
+              className="py-8 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-8 items-baseline"
+            >
+              {/* Left Column: Monospace Category Label */}
+              <div className="md:col-span-4">
+                <span className="font-mono text-xs font-bold text-emerald-400 tracking-wider">
+                  {point.label}
+                </span>
+                <h3 className="text-base font-semibold text-white mt-1">
+                  {point.title}
                 </h3>
-                <p className="text-slate-400 text-xs leading-relaxed">
-                  {item.desc}
+              </div>
+
+              {/* Right Column: Clear Factual Description */}
+              <div className="md:col-span-8">
+                <p className="text-slate-400 text-sm leading-relaxed">
+                  {point.description}
                 </p>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
-    </section>
+    </motion.section>
   );
 }
