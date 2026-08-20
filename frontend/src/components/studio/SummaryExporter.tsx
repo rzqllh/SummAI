@@ -6,12 +6,8 @@ import {
   Copy,
   CheckCircle2,
   Download,
-  Share2,
-  FileCheck,
   RotateCcw,
-  Sparkles,
   Layers,
-  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

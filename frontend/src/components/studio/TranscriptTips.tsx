@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, MessageSquare, FileText, Sparkles } from "lucide-react";
+import { AudioLines, MessageSquare, FileText } from "lucide-react";
 
 export function TranscriptTips() {
   const tips = [

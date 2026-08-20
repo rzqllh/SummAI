@@ -30,25 +30,32 @@ export default function HistoryPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchMeetings();
-  }, [searchQuery, selectedType]);
-
-  const fetchMeetings = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get("http://localhost:8000/api/history", {
+    let isMounted = true;
+    axios
+      .get("http://localhost:8000/api/history", {
         params: {
           q: searchQuery,
           type: selectedType === "all" ? "" : selectedType,
         },
+      })
+      .then((res) => {
+        if (isMounted) {
+          setMeetings(res.data.meetings || res.data || []);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load meetings", err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
       });
-      setMeetings(res.data.meetings || res.data || []);
-    } catch (err) {
-      console.error("Failed to load meetings", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+    return () => {
+      isMounted = false;
+    };
+  }, [searchQuery, selectedType]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to delete this meeting summary from local SQLite?")) {

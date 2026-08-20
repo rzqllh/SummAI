@@ -18,22 +18,22 @@ export function StatsCards() {
     estimated_minutes: 130.3,
     hours_saved: 2.2,
   });
-  const [loading, setLoading] = useState(true);
-
   useEffect(() => {
-    const fetchStats = async () => {
+    let isMounted = true;
+    async function fetchStats() {
       try {
         const res = await axios.get("http://localhost:8000/api/stats");
-        if (res.data && res.data.total_meetings !== undefined) {
+        if (isMounted && res.data && res.data.total_meetings !== undefined) {
           setStats(res.data);
         }
       } catch (err) {
         console.error("Failed to load stats", err);
-      } finally {
-        setLoading(false);
       }
+    }
+    void fetchStats();
+    return () => {
+      isMounted = false;
     };
-    fetchStats();
   }, []);
 
   const cards = [

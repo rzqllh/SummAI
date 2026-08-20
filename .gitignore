@@ -1,10 +1,54 @@
-/.agents
-/.env
-/.streamlit
-/.venv
-/DESIGN.md
-/docs
-/dummy.mp3
-/dummy.txt
-/PRODUCT.md
-/__pycache__
+# Environment variables & secrets
+.env
+.env*.local
+!.env.example
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Databases & local storage
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Audio / video temp files & job artifacts
+temp_*
+chunk_*
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.mov
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# IDE / System
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.agents/
+.streamlit/
+DESIGN.md
+PRODUCT.md
+docs/
+.claude/
+dummy.txt
+meetings.db

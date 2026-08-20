@@ -8,10 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  FileText,
-  Clock,
-  Calendar,
-  ExternalLink,
 } from "lucide-react";
 
 interface RecentJob {
@@ -27,76 +23,72 @@ interface RecentJobsWidgetProps {
   onSelectMeeting?: (meeting: RecentJob) => void;
 }
 
+const DEMO_FALLBACK_JOBS: RecentJob[] = [
+  {
+    id: 1,
+    filename: "Q2 Strategy Discussion.mp3",
+    media_type: "mp3",
+    raw_transcript: "Discussion regarding Q2 goals...",
+    summary: "Executive summary of Q2 Strategy...",
+    created_at: "2026-08-20T10:00:00.000Z",
+  },
+  {
+    id: 2,
+    filename: "Design Review Meeting.wav",
+    media_type: "wav",
+    raw_transcript: "Review of the new design system components...",
+    summary: "Sprint retrospective and component design audit...",
+    created_at: "2026-08-20T08:00:00.000Z",
+  },
+  {
+    id: 3,
+    filename: "Client Call - Acme Corp.mp4",
+    media_type: "mp4",
+    raw_transcript: "Call with client regarding integration specs...",
+    summary: "Technical architecture alignment with Acme Corp...",
+    created_at: "2026-08-19T14:00:00.000Z",
+  },
+];
+
 export function RecentJobsWidget({ onSelectMeeting }: RecentJobsWidgetProps) {
   const [jobs, setJobs] = useState<RecentJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    fetchRecentJobs();
+    let isMounted = true;
+    axios
+      .get("http://localhost:8000/api/history")
+      .then((res) => {
+        if (isMounted) {
+          const list = res.data.meetings || res.data || [];
+          setJobs(list);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load recent jobs", err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const fetchRecentJobs = async () => {
-    try {
-      const res = await axios.get("http://localhost:8000/api/history");
-      const list = res.data.meetings || res.data || [];
-      setJobs(list);
-    } catch (err) {
-      console.error("Failed to load recent jobs", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fallback demo items if database has no entries yet, so UI matches Image 4
-  const displayJobs =
-    jobs.length > 0
-      ? jobs
-      : [
-          {
-            id: 1,
-            filename: "Q2 Strategy Discussion.mp3",
-            media_type: "mp3",
-            raw_transcript: "Discussion regarding Q2 goals...",
-            summary: "Executive summary of Q2 Strategy...",
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 2,
-            filename: "Design Review Meeting.wav",
-            media_type: "wav",
-            raw_transcript: "Review of the new design system components...",
-            summary: "Sprint retrospective and component design audit...",
-            created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          },
-          {
-            id: 3,
-            filename: "Client Call - Acme Corp.mp4",
-            media_type: "mp4",
-            raw_transcript: "Call with client regarding integration specs...",
-            summary: "Technical architecture alignment with Acme Corp...",
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-          },
-        ];
-
+  const displayJobs = jobs.length > 0 ? jobs : DEMO_FALLBACK_JOBS;
   const visibleJobs = expanded ? displayJobs.slice(0, 6) : displayJobs.slice(0, 3);
   const hasMore = displayJobs.length > 3;
 
   const formatTimestamp = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
-      const isToday = new Date().toDateString() === date.toDateString();
-      const timeStr = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      if (isToday) {
-        return `Today, ${timeStr}`;
-      }
-      const isYesterday = new Date(Date.now() - 86400000).toDateString() === date.toDateString();
-      if (isYesterday) {
-        return `Yesterday, ${timeStr}`;
-      }
-      return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${timeStr}`;
+      return date.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
     } catch {
-      return "Today, 10:24 AM";
+      return "Aug 20, 10:24 AM";
     }
   };
 

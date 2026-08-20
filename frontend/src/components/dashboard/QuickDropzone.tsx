@@ -34,7 +34,8 @@ export function QuickDropzone() {
 
   const processFile = (file: File) => {
     if (typeof window !== "undefined") {
-      (window as any).__PENDING_SUMMARIZER_FILE__ = file;
+      const win = window as unknown as { __PENDING_SUMMARIZER_FILE__?: File };
+      win.__PENDING_SUMMARIZER_FILE__ = file;
     }
     // Redirect to summarizer studio
     router.push("/dashboard/summarizer");

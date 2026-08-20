@@ -1,34 +1,44 @@
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import tempfile
 import os
 import shutil
 import logging
+import asyncio
 from dotenv import load_dotenv
-from groq import Groq
-from google import genai
 
 load_dotenv(override=True)
 logger = logging.getLogger(__name__)
 
-from backend.audio_processor import process_and_chunk_audio
-from backend.summarizer import transcribe_audio, process_video_transcript, generate_summary
+from backend.audio_processor import process_and_chunk_audio, extract_audio_from_video
+from backend.summarizer import (
+    transcribe_audio_with_fallback,
+    generate_summary_with_fallback,
+    groq_stt,
+    gemini_llm,
+    cloudflare_stt,
+    cloudflare_llm,
+)
 import backend.db as db
 
-app = FastAPI(title="Meeting Summarizer API")
+app = FastAPI(
+    title="SummAI - Meeting Intelligence API",
+    description="Zero-cost, local-first meeting transcription and structured synthesis with smart Cloudflare fallback."
+)
 
-# Enable CORS
+# CORS configuration
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allowed_origins = [orig.strip() for orig in allowed_origins_env.split(",") if orig.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins if allowed_origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
 def mask_key(key: Optional[str]) -> str:
     if not key or not key.strip():
@@ -38,152 +48,105 @@ def mask_key(key: Optional[str]) -> str:
         return "****"
     return f"{key[:4]}...{key[-4:]}"
 
-def update_env_file(groq_key: Optional[str] = None, gemini_key: Optional[str] = None):
-    env_vars = {}
-    if os.path.exists(ENV_PATH):
-        try:
-            with open(ENV_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        env_vars[k.strip()] = v.strip()
-        except Exception as e:
-            logger.error(f"Error reading .env file: {e}")
-
-    if groq_key is not None:
-        clean_groq = groq_key.strip()
-        env_vars["GROQ_API_KEY"] = clean_groq
-        os.environ["GROQ_API_KEY"] = clean_groq
-    if gemini_key is not None:
-        clean_gemini = gemini_key.strip()
-        env_vars["GEMINI_API_KEY"] = clean_gemini
-        os.environ["GEMINI_API_KEY"] = clean_gemini
-
-    try:
-        with open(ENV_PATH, "w", encoding="utf-8") as f:
-            for k, v in env_vars.items():
-                f.write(f"{k}={v}\n")
-    except Exception as e:
-        logger.error(f"Error writing to .env file: {e}")
-        raise RuntimeError(f"Could not save .env file: {str(e)}")
-
-    load_dotenv(ENV_PATH, override=True)
-
 class SummarizeRequest(BaseModel):
     raw_transcript: str
     filename: str
     media_type: str
     custom_prompt: Optional[str] = None
 
-class SaveKeysRequest(BaseModel):
-    groq_api_key: Optional[str] = None
-    gemini_api_key: Optional[str] = None
-
 class TestKeyRequest(BaseModel):
     api_key: Optional[str] = None
 
 @app.get("/api/settings/keys")
 async def get_keys_status():
-    load_dotenv(ENV_PATH, override=True)
+    load_dotenv(override=True)
     groq_key = os.environ.get("GROQ_API_KEY", "").strip()
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    cf_token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    cf_account = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 
     return {
         "groq_configured": bool(groq_key),
         "gemini_configured": bool(gemini_key),
+        "cloudflare_configured": bool(cf_token and cf_account),
         "groq_preview": mask_key(groq_key),
         "gemini_preview": mask_key(gemini_key),
+        "cloudflare_preview": mask_key(cf_token),
     }
-
-@app.post("/api/settings/keys")
-async def save_keys(req: SaveKeysRequest):
-    try:
-        update_env_file(groq_key=req.groq_api_key, gemini_key=req.gemini_api_key)
-        return {
-            "status": "success",
-            "message": "API keys saved to server environment (.env) successfully.",
-            "groq_preview": mask_key(os.environ.get("GROQ_API_KEY")),
-            "gemini_preview": mask_key(os.environ.get("GEMINI_API_KEY")),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/settings/test-groq")
 async def test_groq_key(req: TestKeyRequest):
-    key = req.api_key or os.environ.get("GROQ_API_KEY")
-    if not key or not key.strip():
-        return {"valid": False, "message": "No Groq API Key provided or configured."}
-
-    try:
-        client = Groq(api_key=key.strip())
-        client.models.list()
-        return {"valid": True, "message": "Groq API Key is active and verified!"}
-    except Exception as e:
-        logger.warning(f"Groq verification failed: {e}")
-        return {"valid": False, "message": f"Groq Error: {str(e)}"}
+    return await groq_stt.test_connection(api_key=req.api_key)
 
 @app.post("/api/settings/test-gemini")
 async def test_gemini_key(req: TestKeyRequest):
-    key = req.api_key or os.environ.get("GEMINI_API_KEY")
-    if not key or not key.strip():
-        return {"valid": False, "message": "No Gemini API Key provided or configured."}
+    return await gemini_llm.test_connection(api_key=req.api_key)
 
-    try:
-        client = genai.Client(api_key=key.strip())
-        client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents="Ping test. Respond with OK."
-        )
-        return {"valid": True, "message": "Gemini API Key is active and verified!"}
-    except Exception as e:
-        logger.warning(f"Gemini verification failed: {e}")
-        return {"valid": False, "message": f"Gemini Error: {str(e)}"}
+@app.post("/api/settings/test-cloudflare")
+async def test_cloudflare_key(req: TestKeyRequest):
+    return await cloudflare_stt.test_connection(api_key=req.api_key)
 
 @app.post("/api/upload")
 async def upload_and_extract(
     file: UploadFile = File(...),
     x_groq_api_key: Optional[str] = Header(None),
+    x_cf_api_token: Optional[str] = Header(None),
 ):
     if not file:
         raise HTTPException(status_code=400, detail="No file sent")
 
-    ext = file.filename.split(".")[-1].lower()
-    temp_files_to_clean: List[str] = []
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "mp4"
     
-    # Save file temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
-        temp_files_to_clean.append(tmp_path)
+    # Create an isolated temporary directory for this job
+    job_dir = tempfile.mkdtemp(prefix="summai_job_")
 
     try:
+        tmp_path = os.path.join(job_dir, f"input.{ext}")
+        with open(tmp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
         if ext in ["mp4", "mov", "mkv", "avi", "webm"]:
-            from backend.audio_processor import extract_audio_from_video
-            # Extract audio from video locally first
-            audio_path = extract_audio_from_video(tmp_path)
-            temp_files_to_clean.append(audio_path)
+            # Extract audio from video in worker thread
+            audio_path = await asyncio.to_thread(extract_audio_from_video, tmp_path, job_dir)
             
             # Process and chunk extracted audio
-            chunks = process_and_chunk_audio(audio_path)
-            for c in chunks:
-                if c != audio_path and c not in temp_files_to_clean:
-                    temp_files_to_clean.append(c)
+            chunks = await asyncio.to_thread(process_and_chunk_audio, audio_path, 20 * 60 * 1000, job_dir)
 
             full_transcript = []
+            provider_used = "Groq Whisper (Large-v3)"
+            fallback_applied = False
+
             for chunk in chunks:
-                full_transcript.append(transcribe_audio(chunk, custom_groq_key=x_groq_api_key))
+                result = await transcribe_audio_with_fallback(
+                    chunk,
+                    custom_groq_key=x_groq_api_key,
+                    custom_cf_token=x_cf_api_token,
+                )
+                full_transcript.append(result["transcript"])
+                provider_used = result.get("provider", provider_used)
+                if result.get("fallback_applied"):
+                    fallback_applied = True
+
             transcript = " ".join(full_transcript)
 
         elif ext in ["mp3", "wav", "m4a"]:
-            chunks = process_and_chunk_audio(tmp_path)
-            for c in chunks:
-                if c != tmp_path and c not in temp_files_to_clean:
-                    temp_files_to_clean.append(c)
+            chunks = await asyncio.to_thread(process_and_chunk_audio, tmp_path, 20 * 60 * 1000, job_dir)
 
             full_transcript = []
+            provider_used = "Groq Whisper (Large-v3)"
+            fallback_applied = False
+
             for chunk in chunks:
-                full_transcript.append(transcribe_audio(chunk, custom_groq_key=x_groq_api_key))
+                result = await transcribe_audio_with_fallback(
+                    chunk,
+                    custom_groq_key=x_groq_api_key,
+                    custom_cf_token=x_cf_api_token,
+                )
+                full_transcript.append(result["transcript"])
+                provider_used = result.get("provider", provider_used)
+                if result.get("fallback_applied"):
+                    fallback_applied = True
+
             transcript = " ".join(full_transcript)
 
         elif ext == "txt":
@@ -191,62 +154,78 @@ async def upload_and_extract(
                 with open(tmp_path, "r", encoding="utf-8") as f:
                     transcript = f.read()
             except UnicodeDecodeError:
-                try:
-                    with open(tmp_path, "r", encoding="utf-16") as f:
-                        transcript = f.read()
-                except UnicodeDecodeError:
-                    with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
-                        transcript = f.read()
+                with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
+                    transcript = f.read()
+            provider_used = "Direct Text Input"
+            fallback_applied = False
         else:
-            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload MP3, WAV, M4A, MP4, MOV, or TXT.")
-            
-        return {"transcript": transcript, "filename": file.filename, "media_type": ext}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file format. Supported: MP3, WAV, M4A, MP4, MOV, MKV, WEBM, TXT."
+            )
+
+        return {
+            "transcript": transcript,
+            "filename": file.filename,
+            "media_type": ext,
+            "provider_used": provider_used,
+            "fallback_applied": fallback_applied,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Upload/extraction error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Upload/transcription pipeline failure", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process media file: {str(e)}")
     finally:
-        for p in temp_files_to_clean:
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except Exception as ex:
-                    logger.warning(f"Failed to remove temp file {p}: {ex}")
+        # Clean up entire job directory safely
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 @app.post("/api/summarize")
 async def summarize(
     req: SummarizeRequest,
     x_gemini_api_key: Optional[str] = Header(None),
+    x_groq_api_key: Optional[str] = Header(None),
+    x_cf_api_token: Optional[str] = Header(None),
 ):
     try:
-        summary = generate_summary(
-            req.raw_transcript,
-            req.custom_prompt,
+        result = await generate_summary_with_fallback(
+            raw_transcript=req.raw_transcript,
+            custom_prompt=req.custom_prompt,
             custom_gemini_key=x_gemini_api_key,
+            custom_groq_key=x_groq_api_key,
+            custom_cf_token=x_cf_api_token,
         )
-        # Save to DB
-        db.save_meeting(req.filename, req.media_type, req.raw_transcript, summary)
-        return {"summary": summary}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        summary = result["summary"]
+        provider_used = result.get("provider", "Google Gemini Flash")
+        fallback_applied = result.get("fallback_applied", False)
+
+        # Persist to local SQLite
+        await asyncio.to_thread(db.save_meeting, req.filename, req.media_type, req.raw_transcript, summary)
+        
+        return {
+            "summary": summary,
+            "provider_used": provider_used,
+            "fallback_applied": fallback_applied,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Summarize error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Synthesis error", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to synthesize summary: {str(e)}")
 
 @app.get("/api/history")
 async def get_history(q: Optional[str] = None, type: Optional[str] = None):
-    meetings = db.search_meetings(query=q or "", media_type=type or "")
+    meetings = await asyncio.to_thread(db.search_meetings, query=q or "", media_type=type or "")
     return {"meetings": meetings}
 
 @app.delete("/api/history/{meeting_id}")
 async def delete_meeting_api(meeting_id: int):
-    db.delete_meeting(meeting_id)
+    await asyncio.to_thread(db.delete_meeting, meeting_id)
     return {"status": "success", "id": meeting_id}
 
 @app.get("/api/stats")
 async def get_stats_api():
-    return db.get_stats()
+    return await asyncio.to_thread(db.get_stats)
 
 @app.get("/api/presets")
 async def get_presets():
@@ -258,4 +237,3 @@ async def get_presets():
             {"id": "tech", "title": "Technical Architecture Review", "prompt": "Summarize technical decisions, engineering constraints, and system design specs discussed."}
         ]
     }
-

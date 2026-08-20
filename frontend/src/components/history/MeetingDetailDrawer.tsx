@@ -5,12 +5,10 @@ import ReactMarkdown from "react-markdown";
 import {
   X,
   FileText,
-  FileCode,
   Copy,
   CheckCircle2,
   Download,
   Trash2,
-  Calendar,
   Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -81,7 +79,7 @@ export function MeetingDetailDrawer({
                 {meeting.filename || `Meeting #${meeting.id}`}
               </h3>
               <p className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
-                <span>{new Date(meeting.created_at || Date.now()).toLocaleString()}</span>
+                <span>{new Date(meeting.created_at || "2026-08-20T00:00:00.000Z").toLocaleString()}</span>
                 <span>•</span>
                 <span className="uppercase">{meeting.media_type || "txt"}</span>
               </p>

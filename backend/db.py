@@ -2,64 +2,69 @@ import sqlite3
 from datetime import datetime
 import os
 
-DB_NAME = "meetings.db"
+# Deterministic absolute path to meetings.db in root project directory
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_NAME = os.path.join(BASE_DIR, "meetings.db")
+
+def get_connection():
+    conn = sqlite3.connect(DB_NAME)
+    # Enable Write-Ahead Logging for better concurrent read/write performance
+    conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS meetings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT,
-            media_type TEXT,
-            raw_transcript TEXT,
-            summary TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS meetings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT,
+                media_type TEXT,
+                raw_transcript TEXT,
+                summary TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
 
 def save_meeting(filename: str, media_type: str, raw_transcript: str, summary: str):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO meetings (filename, media_type, raw_transcript, summary, created_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (filename, media_type, raw_transcript, summary, datetime.now()))
-    conn.commit()
-    meeting_id = cursor.lastrowid
-    conn.close()
-    return meeting_id
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO meetings (filename, media_type, raw_transcript, summary, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (filename, media_type, raw_transcript, summary, datetime.now()))
+        conn.commit()
+        return cursor.lastrowid
 
 def get_all_meetings():
     if not os.path.exists(DB_NAME):
         return []
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings ORDER BY created_at DESC')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    meetings = []
-    for row in rows:
-        meetings.append({
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        
+    return [
+        {
             "id": row[0],
             "filename": row[1],
             "media_type": row[2],
             "raw_transcript": row[3],
             "summary": row[4],
             "created_at": row[5]
-        })
-    return meetings
+        }
+        for row in rows
+    ]
 
 def get_meeting(meeting_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings WHERE id = ?', (meeting_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
+    if not os.path.exists(DB_NAME):
+        return None
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings WHERE id = ?', (meeting_id,))
+        row = cursor.fetchone()
+        
     if row:
         return {
             "id": row[0],
@@ -72,31 +77,31 @@ def get_meeting(meeting_id: int):
     return None
 
 def delete_meeting(meeting_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
-    conn.commit()
-    conn.close()
+    if not os.path.exists(DB_NAME):
+        return
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.commit()
 
 def search_meetings(query: str = "", media_type: str = ""):
     if not os.path.exists(DB_NAME):
         return []
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    sql = "SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings WHERE 1=1"
-    params = []
-    if query:
-        q = f"%{query}%"
-        sql += " AND (filename LIKE ? OR raw_transcript LIKE ? OR summary LIKE ?)"
-        params.extend([q, q, q])
-    if media_type and media_type != "all":
-        sql += " AND media_type = ?"
-        params.append(media_type)
-    sql += " ORDER BY created_at DESC"
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
-    conn.close()
-    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        sql = "SELECT id, filename, media_type, raw_transcript, summary, created_at FROM meetings WHERE 1=1"
+        params = []
+        if query:
+            q = f"%{query}%"
+            sql += " AND (filename LIKE ? OR raw_transcript LIKE ? OR summary LIKE ?)"
+            params.extend([q, q, q])
+        if media_type and media_type != "all":
+            sql += " AND media_type = ?"
+            params.append(media_type)
+        sql += " ORDER BY created_at DESC"
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        
     return [
         {
             "id": row[0],
@@ -112,12 +117,11 @@ def search_meetings(query: str = "", media_type: str = ""):
 def get_stats():
     if not os.path.exists(DB_NAME):
         return {"total_meetings": 0, "total_characters": 0, "estimated_minutes": 0, "hours_saved": 0}
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(raw_transcript)), 0) FROM meetings")
-    row = cursor.fetchone()
-    conn.close()
-    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(raw_transcript)), 0) FROM meetings")
+        row = cursor.fetchone()
+        
     count = row[0] if row else 0
     total_chars = row[1] if row else 0
     
@@ -130,4 +134,3 @@ def get_stats():
 
 # Initialize on import
 init_db()
-
