@@ -7,11 +7,8 @@ import {
   Wand2,
   History,
   Settings,
-  Sparkles,
   ArrowLeft,
   AudioWaveform,
-  CheckCircle2,
-  FileText,
 } from "lucide-react";
 
 interface SidebarProps {

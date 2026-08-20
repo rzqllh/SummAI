@@ -2,14 +2,11 @@
 
 import { useState, useMemo } from "react";
 import {
-  FileText,
   Search,
   Copy,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
-  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";

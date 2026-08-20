@@ -1,139 +1,186 @@
 import os
-from groq import Groq, AuthenticationError, APIError, RateLimitError
-from google import genai
-from google.genai import types, errors
-import time
 import logging
+from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
+
+from backend.providers.base import (
+    ProviderAuthError,
+    ProviderRateLimitError,
+    ProviderUnavailableError,
+    ProviderError,
+)
+from backend.providers.groq_provider import GroqSTTProvider, GroqLLMProvider
+from backend.providers.gemini_provider import GeminiLLMProvider
+from backend.providers.cloudflare_provider import CloudflareSTTProvider, CloudflareLLMProvider
 
 logger = logging.getLogger(__name__)
 
-def transcribe_audio(audio_file_path: str, custom_groq_key: str = None) -> str:
-    # Reload .env dynamically so live edits take effect immediately
+# Initialize singletons
+groq_stt = GroqSTTProvider()
+cloudflare_stt = CloudflareSTTProvider()
+
+gemini_llm = GeminiLLMProvider()
+groq_llm = GroqLLMProvider()
+cloudflare_llm = CloudflareLLMProvider()
+
+async def transcribe_audio_with_fallback(
+    audio_file_path: str,
+    custom_groq_key: Optional[str] = None,
+    custom_cf_token: Optional[str] = None,
+    language: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Transcribes audio with smart multi-provider fallback.
+    Order:
+      1. Groq Whisper Large-v3 (if user/server key available)
+      2. Cloudflare Workers AI Whisper (zero-config fallback)
+    """
     load_dotenv(override=True)
     
-    groq_api_key = custom_groq_key or os.environ.get("GROQ_API_KEY")
-    if not groq_api_key or not groq_api_key.strip():
-        raise ValueError("GROQ_API_KEY is not set. Please provide a valid Groq API Key in Settings.")
-        
-    try:
-        groq_client = Groq(api_key=groq_api_key.strip())
-        
-        with open(audio_file_path, "rb") as file:
-            transcription = groq_client.audio.transcriptions.create(
-                file=(os.path.basename(audio_file_path), file.read()),
-                model="whisper-large-v3",
-                response_format="text",
-                language="id"
-            )
-        return str(transcription)
-    except AuthenticationError as e:
-        logger.error(f"Groq Authentication failed: {e}")
-        raise ValueError("Invalid or expired GROQ_API_KEY. Please update your Groq API Key in Settings.")
-    except RateLimitError as e:
-        logger.error(f"Groq Rate limit: {e}")
-        raise ValueError("Groq rate limit exceeded. Please wait a moment before trying again.")
-    except APIError as e:
-        logger.error(f"Groq API Error: {e}")
-        raise ValueError(f"Groq Whisper transcription failed: {e.message if hasattr(e, 'message') else str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected Groq error: {e}")
-        raise ValueError(f"Transcription failed: {str(e)}")
-
-def process_video_transcript(video_file_path: str, custom_gemini_key: str = None) -> str:
-    load_dotenv(override=True)
+    stt_candidates = []
     
-    gemini_api_key = custom_gemini_key or os.environ.get("GEMINI_API_KEY")
-    if not gemini_api_key or not gemini_api_key.strip():
-        raise ValueError("GEMINI_API_KEY is not set. Please provide a valid Gemini API Key in Settings.")
-        
-    try:
-        gemini_client = genai.Client(api_key=gemini_api_key.strip())
-        
-        logger.info(f"Uploading video {video_file_path} to Gemini...")
-        video_file = gemini_client.files.upload(file=video_file_path)
-        
-        while video_file.state.name == "PROCESSING":
-            logger.info("Gemini is processing the video...")
-            time.sleep(5)
-            video_file = gemini_client.files.get(name=video_file.name)
-            
-        if video_file.state.name == "FAILED":
-            raise ValueError("Gemini failed to process the video.")
-            
-        logger.info("Video processed. Generating transcript...")
-        prompt = "Tolong buatkan transkrip lengkap kata-demi-kata dari video rapat ini, sertakan siapa yang berbicara jika memungkinkan. Hanya berikan teks transkrip tanpa komentar tambahan apa pun."
-        
-        response = gemini_client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=[video_file, prompt],
-            config=types.GenerateContentConfig(temperature=0.1)
-        )
-        
-        return response.text
-    except errors.ClientError as e:
-        logger.error(f"Gemini ClientError: {e}")
-        raise ValueError(f"Gemini API error: {e.message if hasattr(e, 'message') else str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected Gemini video transcript error: {e}")
-        raise ValueError(f"Gemini video processing failed: {str(e)}")
-
-def generate_summary(raw_transcript: str, custom_prompt: str = None, custom_gemini_key: str = None) -> str:
-    load_dotenv(override=True)
+    # Check if Groq key exists
+    has_groq = bool(custom_groq_key or os.environ.get("GROQ_API_KEY"))
+    if has_groq:
+        stt_candidates.append((groq_stt, custom_groq_key))
     
-    gemini_api_key = custom_gemini_key or os.environ.get("GEMINI_API_KEY")
-    if not gemini_api_key or not gemini_api_key.strip():
-        raise ValueError("GEMINI_API_KEY is not set. Please provide a valid Gemini API Key in Settings.")
-        
-    try:
-        gemini_client = genai.Client(api_key=gemini_api_key.strip())
-        
-        if custom_prompt and custom_prompt.strip():
-            prompt = f"""
-            {custom_prompt}
+    # Always append Cloudflare as fallback or primary zero-config
+    stt_candidates.append((cloudflare_stt, custom_cf_token))
+    
+    # If no Groq key, also try Groq last just in case
+    if not has_groq:
+        stt_candidates.append((groq_stt, None))
 
-            TRANSKRIP MEETING:
-            {raw_transcript}
-            """
-        else:
-            prompt = f"""
-            Kamu adalah Notulis Rapat Profesional. Tugasmu adalah menganalisis transkrip meeting berikut dan buat ringkasan yang terstruktur.
+    errors_encountered: List[str] = []
+    fallback_applied = False
 
-            TRANSKRIP MEETING:
-            {raw_transcript}
+    for idx, (provider, key) in enumerate(stt_candidates):
+        try:
+            logger.info(f"[STT] Attempting transcription via {provider.name} (Priority {idx+1})...")
+            text = await provider.transcribe(audio_file_path, api_key=key, language=language)
+            if text and text.strip():
+                return {
+                    "transcript": text.strip(),
+                    "provider": provider.name,
+                    "fallback_applied": fallback_applied,
+                }
+        except ProviderAuthError as e:
+            logger.warning(f"[STT] {provider.name} auth error: {e}. Moving to next provider...")
+            errors_encountered.append(f"{provider.name}: {e.message}")
+            fallback_applied = True
+            continue
+        except (ProviderRateLimitError, ProviderUnavailableError) as e:
+            logger.warning(f"[STT] {provider.name} quota/service issue: {e}. Executing automatic fallback...")
+            errors_encountered.append(f"{provider.name}: {e.message}")
+            fallback_applied = True
+            continue
+        except Exception as e:
+            logger.error(f"[STT] {provider.name} unexpected error: {e}")
+            errors_encountered.append(f"{provider.name}: {str(e)}")
+            fallback_applied = True
+            continue
 
-            FORMAT OUTPUT (Gunakan Markdown):
-            ## 📌 Ringkasan Eksekutif
-            (Ringkasan 2-3 kalimat mengenai fokus utama rapat)
+    joined_errors = " | ".join(errors_encountered)
+    raise RuntimeError(f"All Speech-to-Text providers failed. Details: {joined_errors}")
 
-            ## 💬 Poin-Poin Diskusi Utama
-            - (Detail topik yang dibahas)
+async def generate_summary_with_fallback(
+    raw_transcript: str,
+    custom_prompt: Optional[str] = None,
+    custom_gemini_key: Optional[str] = None,
+    custom_groq_key: Optional[str] = None,
+    custom_cf_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Synthesizes transcript into structured intelligence with multi-provider fallback.
+    Order:
+      1. Google Gemini Flash (if user/server key available)
+      2. Groq Llama 3.3 70B (if user/server key available)
+      3. Cloudflare Workers AI Llama 3.3 70B (zero-config fallback)
+    """
+    load_dotenv(override=True)
 
-            ## 🎯 Keputusan Final
-            - (Keputusan yang disepakati bersama)
+    if custom_prompt and custom_prompt.strip():
+        prompt = f"""
+        {custom_prompt}
 
-            ## 📝 Action Items & To-Do List
-            | Task / Tugas | PIC (Jika ada) | Target / Deadline |
-            | :--- | :--- | :--- |
-            | Contoh task | Nama | YYYY-MM-DD / ASAP |
+        TRANSKRIP MEETING:
+        {raw_transcript}
+        """
+    else:
+        prompt = f"""
+        Kamu adalah Notulis Rapat Profesional. Tugasmu adalah menganalisis transkrip meeting berikut dan buat ringkasan yang terstruktur.
 
-            ## ❓ Topik Pending / Follow-up Needed
-            - (Isu yang belum selesai)
-            """
+        TRANSKRIP MEETING:
+        {raw_transcript}
 
-        response = gemini_client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2, 
-            )
-        )
-        
-        return response.text
-    except errors.ClientError as e:
-        logger.error(f"Gemini ClientError: {e}")
-        raise ValueError(f"Gemini API error: {e.message if hasattr(e, 'message') else str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected Gemini summary error: {e}")
-        raise ValueError(f"Gemini synthesis failed: {str(e)}")
+        FORMAT OUTPUT (Gunakan Markdown):
+        ## 📌 Ringkasan Eksekutif
+        (Ringkasan 2-3 kalimat mengenai fokus utama rapat)
 
+        ## 💬 Poin-Poin Diskusi Utama
+        - (Detail topik yang dibahas)
+
+        ## 🎯 Keputusan Final
+        - (Keputusan yang disepakati bersama)
+
+        ## 📝 Action Items & To-Do List
+        | Task / Tugas | PIC (Jika ada) | Target / Deadline |
+        | :--- | :--- | :--- |
+        | Contoh task | Nama | YYYY-MM-DD / ASAP |
+
+        ## ❓ Topik Pending / Follow-up Needed
+        - (Isu yang belum selesai)
+        """
+
+    llm_candidates = []
+
+    # Priority 1: Gemini
+    has_gemini = bool(custom_gemini_key or os.environ.get("GEMINI_API_KEY"))
+    if has_gemini:
+        llm_candidates.append((gemini_llm, custom_gemini_key))
+
+    # Priority 2: Groq Llama 3.3
+    has_groq = bool(custom_groq_key or os.environ.get("GROQ_API_KEY"))
+    if has_groq:
+        llm_candidates.append((groq_llm, custom_groq_key))
+
+    # Priority 3: Cloudflare Workers AI
+    llm_candidates.append((cloudflare_llm, custom_cf_token))
+
+    # If Gemini wasn't tested first, test as final candidate
+    if not has_gemini:
+        llm_candidates.append((gemini_llm, None))
+    if not has_groq:
+        llm_candidates.append((groq_llm, None))
+
+    errors_encountered: List[str] = []
+    fallback_applied = False
+
+    for idx, (provider, key) in enumerate(llm_candidates):
+        try:
+            logger.info(f"[LLM] Attempting synthesis via {provider.name} (Priority {idx+1})...")
+            summary_text = await provider.generate(prompt, api_key=key)
+            if summary_text and summary_text.strip():
+                return {
+                    "summary": summary_text.strip(),
+                    "provider": provider.name,
+                    "fallback_applied": fallback_applied,
+                }
+        except ProviderAuthError as e:
+            logger.warning(f"[LLM] {provider.name} auth error: {e}. Moving to next provider...")
+            errors_encountered.append(f"{provider.name}: {e.message}")
+            fallback_applied = True
+            continue
+        except (ProviderRateLimitError, ProviderUnavailableError) as e:
+            logger.warning(f"[LLM] {provider.name} rate limit / outage: {e}. Executing automatic fallback...")
+            errors_encountered.append(f"{provider.name}: {e.message}")
+            fallback_applied = True
+            continue
+        except Exception as e:
+            logger.error(f"[LLM] {provider.name} unexpected error: {e}")
+            errors_encountered.append(f"{provider.name}: {str(e)}")
+            fallback_applied = True
+            continue
+
+    joined_errors = " | ".join(errors_encountered)
+    raise RuntimeError(f"All LLM synthesis providers failed. Details: {joined_errors}")

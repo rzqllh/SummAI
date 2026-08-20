@@ -1,20 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import {
   UploadCloud,
-  FileAudio,
-  Video,
-  FileText,
   AlertCircle,
-  Sparkles,
-  ArrowRight,
-  Plus,
   FolderOpen,
   Settings,
-  AudioLines,
+  Sparkles,
+  Zap,
+  Cloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator, StudioStep } from "@/components/studio/StepIndicator";
@@ -30,7 +26,7 @@ export default function SummarizerStudioPage() {
   const [maxReachedStep, setMaxReachedStep] = useState<StudioStep>(1);
 
   // File upload & metadata state
-  const [file, setFile] = useState<File | null>(null);
+  const [, setFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
   const [filesize, setFilesize] = useState("");
   const [duration, setDuration] = useState("00:15:00");
@@ -46,17 +42,14 @@ export default function SummarizerStudioPage() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Provider tracking state
+  const [sttProvider, setSttProvider] = useState("");
+  const [sttFallback, setSttFallback] = useState(false);
+  const [llmProvider, setLlmProvider] = useState("");
+  const [llmFallback, setLlmFallback] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Auto-pickup pending file from QuickDropzone
-  useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).__PENDING_SUMMARIZER_FILE__) {
-      const pendingFile = (window as any).__PENDING_SUMMARIZER_FILE__;
-      (window as any).__PENDING_SUMMARIZER_FILE__ = null;
-      handleFileUpload(pendingFile);
-    }
-  }, []);
 
   // Format file size
   const formatBytes = (bytes: number) => {
@@ -93,7 +86,7 @@ export default function SummarizerStudioPage() {
     }
   };
 
-  const handleFileUpload = async (selectedFile: File) => {
+  const handleFileUpload = useCallback(async (selectedFile: File) => {
     setFile(selectedFile);
     setFilename(selectedFile.name);
     setFilesize(formatBytes(selectedFile.size));
@@ -123,10 +116,11 @@ export default function SummarizerStudioPage() {
 
     try {
       const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY") || "";
+      const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN") || "";
+
       const headers: Record<string, string> = { "Content-Type": "multipart/form-data" };
-      if (savedGroqKey) {
-        headers["x-groq-api-key"] = savedGroqKey;
-      }
+      if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
+      if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
 
       const res = await axios.post("http://localhost:8000/api/upload", formData, {
         headers,
@@ -142,6 +136,9 @@ export default function SummarizerStudioPage() {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
+      setSttProvider(res.data.provider_used || "Speech Recognition");
+      setSttFallback(Boolean(res.data.fallback_applied));
+
       // Short delay for smooth transition to step 2
       setTimeout(() => {
         setTranscript(res.data.transcript || "");
@@ -149,24 +146,41 @@ export default function SummarizerStudioPage() {
         setMaxReachedStep((prev) => (prev < 2 ? 2 : prev));
         setIsUploading(false);
       }, 400);
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearInterval(progressInterval);
       setIsUploading(false);
 
-      if (axios.isCancel(err) || err.name === "CanceledError") {
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+
+      if (axios.isCancel(err) || (err as Error).name === "CanceledError") {
         setErrorMessage("Upload and transcription canceled.");
         return;
       }
 
       console.error("Upload error", err);
-      if (err.message === "Network Error" || err.code === "ERR_CONNECTION_REFUSED") {
+      if (axiosErr.message === "Network Error" || axiosErr.code === "ERR_CONNECTION_REFUSED") {
         setErrorMessage("Backend is offline. Please make sure FastAPI is running on port 8000.");
       } else {
-        const detail = err.response?.data?.detail || err.message;
+        const detail = axiosErr.response?.data?.detail || axiosErr.message;
         setErrorMessage("Failed to process media file: " + detail);
       }
     }
-  };
+  }, []);
+
+  // Auto-pickup pending file from QuickDropzone
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const win = window as unknown as { __PENDING_SUMMARIZER_FILE__?: File | null };
+      if (win.__PENDING_SUMMARIZER_FILE__) {
+        const pendingFile = win.__PENDING_SUMMARIZER_FILE__;
+        win.__PENDING_SUMMARIZER_FILE__ = null;
+        const timer = setTimeout(() => {
+          void handleFileUpload(pendingFile);
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [handleFileUpload]);
 
   const handleCancelUpload = () => {
     if (abortControllerRef.current) {
@@ -182,10 +196,13 @@ export default function SummarizerStudioPage() {
 
     try {
       const savedGeminiKey = localStorage.getItem("SUMMAI_GEMINI_KEY") || "";
+      const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY") || "";
+      const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN") || "";
+
       const headers: Record<string, string> = {};
-      if (savedGeminiKey) {
-        headers["x-gemini-api-key"] = savedGeminiKey;
-      }
+      if (savedGeminiKey) headers["x-gemini-api-key"] = savedGeminiKey;
+      if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
+      if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
 
       const res = await axios.post(
         "http://localhost:8000/api/summarize",
@@ -199,14 +216,18 @@ export default function SummarizerStudioPage() {
       );
 
       setSummary(res.data.summary || "");
+      setLlmProvider(res.data.provider_used || "AI Synthesis");
+      setLlmFallback(Boolean(res.data.fallback_applied));
+
       setCurrentStep(4);
       setMaxReachedStep(4);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const axiosErr = err as AxiosError<{ detail?: string }>;
       console.error("Summarize error", err);
-      if (err.message === "Network Error" || err.code === "ERR_CONNECTION_REFUSED") {
+      if (axiosErr.message === "Network Error" || axiosErr.code === "ERR_CONNECTION_REFUSED") {
         setErrorMessage("Backend is offline. Please make sure FastAPI is running on port 8000.");
       } else {
-        const detail = err.response?.data?.detail || err.message;
+        const detail = axiosErr.response?.data?.detail || axiosErr.message;
         setErrorMessage("Failed to synthesize summary: " + detail);
       }
     } finally {
@@ -223,6 +244,10 @@ export default function SummarizerStudioPage() {
     setTranscript("");
     setCustomPrompt("");
     setSummary("");
+    setSttProvider("");
+    setSttFallback(false);
+    setLlmProvider("");
+    setLlmFallback(false);
     setCurrentStep(1);
     setMaxReachedStep(1);
     setErrorMessage("");
@@ -230,7 +255,7 @@ export default function SummarizerStudioPage() {
     setUploadProgress(0);
   };
 
-  const handleSelectRecentJob = (job: any) => {
+  const handleSelectRecentJob = (job: { filename: string; media_type?: string; raw_transcript?: string; summary?: string }) => {
     setFilename(job.filename);
     setMediaType(job.media_type || "mp4");
     setTranscript(job.raw_transcript || "");
@@ -292,7 +317,7 @@ export default function SummarizerStudioPage() {
                   New meeting
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Upload a meeting recording or transcript to get started.
+                  Upload a meeting recording or transcript to get started. No API keys required (auto-routes through free pool).
                 </p>
               </div>
 
@@ -307,7 +332,7 @@ export default function SummarizerStudioPage() {
                   e.preventDefault();
                   setIsDragging(false);
                   if (e.dataTransfer.files?.[0]) {
-                    handleFileUpload(e.dataTransfer.files[0]);
+                    void handleFileUpload(e.dataTransfer.files[0]);
                   }
                 }}
                 className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all duration-200 ${
@@ -321,7 +346,7 @@ export default function SummarizerStudioPage() {
                   ref={fileInputRef}
                   onChange={(e) => {
                     if (e.target.files?.[0]) {
-                      handleFileUpload(e.target.files[0]);
+                      void handleFileUpload(e.target.files[0]);
                     }
                   }}
                   accept=".mp3,.wav,.m4a,.mp4,.mov,.mkv,.webm,.txt"
@@ -382,13 +407,26 @@ export default function SummarizerStudioPage() {
 
       {/* STEP 2: Review Raw Transcript */}
       {currentStep === 2 && (
-        <TranscriptReviewer
-          transcript={transcript}
-          onChange={(val) => setTranscript(val)}
-          onNext={() => setCurrentStep(3)}
-          onBack={() => setCurrentStep(1)}
-          filename={filename}
-        />
+        <div className="space-y-4">
+          {sttProvider && (
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Transcribed using: <strong className="text-slate-200">{sttProvider}</strong></span>
+              {sttFallback && (
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px]">
+                  Auto-Fallback Active
+                </span>
+              )}
+            </div>
+          )}
+          <TranscriptReviewer
+            transcript={transcript}
+            onChange={(val) => setTranscript(val)}
+            onNext={() => setCurrentStep(3)}
+            onBack={() => setCurrentStep(1)}
+            filename={filename}
+          />
+        </div>
       )}
 
       {/* STEP 3: Select Synthesis Preset */}
@@ -404,11 +442,25 @@ export default function SummarizerStudioPage() {
 
       {/* STEP 4: Export & Download Summary */}
       {currentStep === 4 && (
-        <SummaryExporter
-          summary={summary}
-          filename={filename}
-          onReset={handleReset}
-        />
+        <div className="space-y-4">
+          {llmProvider && (
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Synthesized using: <strong className="text-slate-200">{llmProvider}</strong></span>
+              {llmFallback && (
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] flex items-center gap-1">
+                  <Cloud className="w-3 h-3" />
+                  Auto-Fallback Active
+                </span>
+              )}
+            </div>
+          )}
+          <SummaryExporter
+            summary={summary}
+            filename={filename}
+            onReset={handleReset}
+          />
+        </div>
       )}
     </div>
   );

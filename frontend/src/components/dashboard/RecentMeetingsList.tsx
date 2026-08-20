@@ -31,20 +31,27 @@ export function RecentMeetingsList() {
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingItem | null>(null);
 
   useEffect(() => {
-    fetchRecentMeetings();
-  }, []);
-
-  const fetchRecentMeetings = async () => {
-    try {
-      const res = await axios.get("http://localhost:8000/api/history");
-      const list = res.data.meetings || res.data || [];
-      setMeetings(list.slice(0, 5));
-    } catch (err) {
-      console.error("Failed to load recent meetings", err);
-    } finally {
-      setLoading(false);
+    let isMounted = true;
+    async function load() {
+      try {
+        const res = await axios.get("http://localhost:8000/api/history");
+        if (isMounted) {
+          const list = res.data.meetings || res.data || [];
+          setMeetings(list.slice(0, 5));
+        }
+      } catch (err) {
+        console.error("Failed to load recent meetings", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
     }
-  };
+    void load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleCopySummary = (id: number, summaryText: string) => {
     navigator.clipboard.writeText(summaryText);
