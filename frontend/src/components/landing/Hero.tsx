@@ -45,7 +45,7 @@ export function Hero() {
           {/* Subtitle */}
           <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
             Drop raw audio, video (MP4/MOV), or text transcripts. Get structured
-            Executive Summaries, Notion docs, and Jira action items in seconds
+            Corporate MoM, Action Items, and Executive Summaries in seconds
             with zero subscription lock-in.
           </p>
 
@@ -58,19 +58,18 @@ export function Hero() {
               >
                 <Zap className="w-4 h-4 fill-slate-950" />
                 <span>Start a Summary</span>
-                <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
 
-            <a href="#comparison" className="w-full sm:w-auto">
+            <Link href="#before-after" className="w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="lg"
-                className="w-full sm:w-auto border-slate-800 bg-slate-900/80 hover:bg-slate-800/80 text-slate-200 font-semibold px-6 h-12 rounded-xl transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0"
+                className="w-full sm:w-auto border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-200 px-6 h-12 rounded-xl"
               >
-                <span>See Live Example</span>
+                <span>See Output Examples</span>
               </Button>
-            </a>
+            </Link>
           </div>
 
           {/* Trust Highlights */}
@@ -164,7 +163,7 @@ export function Hero() {
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Preset: Jira & Action Items
+                      Preset: Corporate MoM & Action Plan
                     </span>
                   </div>
                   <span className="text-xs text-slate-400">Ready to export</span>

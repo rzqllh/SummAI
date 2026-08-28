@@ -202,12 +202,12 @@ Do not add a meeting summary.`,
     custom: false,
   },
   {
-    id: "jira",
-    title: "Action Items & Jira Tasks",
+    id: "action_items",
+    title: "Action Items & Tasks",
     description:
-      "Extract explicit tasks into a structured table with assignees, deadlines, and Jira markup.",
+      "Extract explicit tasks into a structured table with assignees, deadlines, and operational checklists.",
     prompt:
-      "Extract all action items, assignees, and deadlines into a clear Markdown table, followed by formatted Jira-ready task tickets.",
+      "Extract all action items, assignees, and deadlines into a clear Markdown table, followed by formatted actionable checklists.",
     custom: false,
   },
   {
@@ -238,7 +238,7 @@ function getPresetIcon(id: string) {
       return FileEdit;
     case "exec":
       return FileText;
-    case "jira":
+    case "action_items":
       return ListTodo;
     case "retro":
       return RotateCcw;

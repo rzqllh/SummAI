@@ -18,17 +18,20 @@ SummAI transcribes audio and video files, then synthesizes the transcript into s
 
 ## What it does
 
-Upload a meeting recording or paste a raw transcript. SummAI runs it through Groq Whisper for transcription, then through Gemini for synthesis. You get formatted output you can copy, export as `.md`, or format for Jira in one click.
+Upload a meeting recording, use live mic recording, or paste a raw transcript. SummAI runs it through Groq Whisper for transcription, then through Gemini for synthesis. You get formatted output you can copy, export as official PDF/Word (`.docx`), `.md`, or chat with interactively.
 
-**Supports:** `.mp3` `.wav` `.m4a` `.mp4` `.mov` `.mkv` `.txt` — up to 2 GB
+**Supports:** `.mp3` `.wav` `.m4a` `.mp4` `.mov` `.mkv` `.webm` `.txt` — up to 2 GB
 
 **Synthesis presets:**
+- Corporate MoM (Minutes of Meeting)
+- Transcript Cleanup & Polish
 - Executive Summary
-- Action Items + Jira Tasks
+- Action Items & Tasks
 - Sprint Retrospective
 - Technical Architecture Review
+- Custom Studio Presets
 
-**Cost:** $0. Both Groq and Gemini have free-tier API keys. Check their rate limits for your usage volume.
+**Cost:** $0. Groq and Gemini have generous free-tier API quotas.
 
 ## How it works
 

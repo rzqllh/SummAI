@@ -64,7 +64,7 @@ Sinkronisasi status Sprint 24: Integrasi Frontend Auth menunggu update dokumenta
             <span>Interactive Comparison</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white font-display">
-            From Messy Discussions to Copy-Ready Jira Tasks
+            From Messy Discussions to Structured Action Plans
           </h2>
           <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
             Never scroll through 10 pages of unstructured transcript text again.
@@ -132,7 +132,7 @@ Sinkronisasi status Sprint 24: Integrasi Frontend Auth menunggu update dokumenta
               <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-emerald-400">
-                    Preset: Jira & Action Items • Ready to export
+                    Preset: Action Items & Tasks • Ready to export
                   </span>
                 </div>
                 <button

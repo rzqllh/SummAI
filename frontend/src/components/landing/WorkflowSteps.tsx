@@ -34,14 +34,14 @@ export function WorkflowSteps() {
       badge: "CUSTOM PRESETS",
       title: "Select Synthesis Preset",
       description:
-        "Inspect the word-for-word transcript with word counts. Choose from Executive, Jira, Retro, or custom prompts.",
+        "Inspect the word-for-word transcript with word counts. Choose from Corporate MoM, Action Items, Retro, or custom prompts.",
     },
     {
       number: "03",
-      badge: "1-CLICK COPY",
-      title: "Export to Notion & Jira",
+      badge: "1-CLICK EXPORT",
+      title: "Export to PDF, DOCX & Markdown",
       description:
-        "Get instant Markdown outputs with action item tables, formatted assignees, and ready-to-paste Jira markup.",
+        "Get instant formatted outputs with action item tables, structured PIC assignments, and printable PDF documents.",
     },
   ];
 
@@ -77,7 +77,7 @@ export function WorkflowSteps() {
             <span>Seamless Workflow</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white font-display">
-            From Audio File to Jira Tasks in 3 Steps
+            From Audio File to Corporate MoM in 3 Steps
           </h2>
           <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
             Engineered to remove friction and save over 45 minutes on every single meeting.

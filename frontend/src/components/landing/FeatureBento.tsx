@@ -5,12 +5,12 @@ import { ChevronRight, Mic, AudioWaveform, FileText, CheckCircle2 } from "lucide
 import { motion, useReducedMotion } from "motion/react";
 
 export function FeatureBento() {
-  const [activePreset, setActivePreset] = useState<string>("Jira Action Items");
+  const [activePreset, setActivePreset] = useState<string>("Corporate MoM");
   const shouldReduceMotion = useReducedMotion();
 
   const presets = [
-    "Executive Summary",
-    "Jira Action Items",
+    "Corporate MoM",
+    "Action Items & Tasks",
     "Sprint Retro",
     "Custom Prompt",
   ];
@@ -157,7 +157,7 @@ export function FeatureBento() {
                   Preset Chooser with Tailored Schemas
                 </h3>
                 <p className="text-slate-400 text-xs sm:text-sm mt-1 leading-relaxed">
-                  Switch output formatting instantly based on the meeting type. Get strict Jira tables, bulleted executive briefs, or custom engineering agendas.
+                  Switch output formatting instantly based on the meeting type. Get strict Corporate MoMs, bulleted executive briefs, or custom engineering agendas.
                 </p>
               </div>
 
