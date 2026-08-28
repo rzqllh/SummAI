@@ -744,7 +744,7 @@ export default function SettingsPage() {
                           setDeletingId(null);
                         }
                       }}
-                      className="shrink-0 p-1 rounded text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition-colors opacity-70 group-hover:opacity-100"
                       aria-label={`Delete ${preset.title}`}
                     >
                       {deletingId === preset.id
