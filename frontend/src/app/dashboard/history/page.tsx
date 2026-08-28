@@ -20,6 +20,7 @@ import {
   MeetingDetailDrawer,
   HistoryMeeting,
 } from "@/components/history/MeetingDetailDrawer";
+import { getApiBaseUrl } from "@/lib/api";
 
 export default function HistoryPage() {
   const [meetings, setMeetings] = useState<HistoryMeeting[]>([]);
@@ -32,7 +33,7 @@ export default function HistoryPage() {
   useEffect(() => {
     let isMounted = true;
     axios
-      .get("http://localhost:8000/api/history", {
+      .get(`${getApiBaseUrl()}/api/history`, {
         params: {
           q: searchQuery,
           type: selectedType === "all" ? "" : selectedType,
@@ -63,7 +64,7 @@ export default function HistoryPage() {
     }
 
     try {
-      await axios.delete(`http://localhost:8000/api/history/${id}`);
+      await axios.delete(`${getApiBaseUrl()}/api/history/${id}`);
       setMeetings((prev) => prev.filter((m) => m.id !== id));
       if (selectedMeeting?.id === id) {
         setSelectedMeeting(null);

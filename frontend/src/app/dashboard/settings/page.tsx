@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface PresetItem {
   id: string;
@@ -106,8 +107,8 @@ export default function SettingsPage() {
     async function loadData() {
       try {
         const [, presetsRes, keysRes] = await Promise.all([
-          axios.get("http://localhost:8000/api/stats"),
-          axios.get<{ presets?: PresetItem[] }>("http://localhost:8000/api/presets"),
+          axios.get(`${getApiBaseUrl()}/api/stats`),
+          axios.get<{ presets?: PresetItem[] }>(`${getApiBaseUrl()}/api/presets`),
           axios.get<{
             groq_configured: boolean;
             gemini_configured: boolean;
@@ -115,7 +116,7 @@ export default function SettingsPage() {
             groq_preview: string;
             gemini_preview: string;
             cloudflare_preview: string;
-          }>("http://localhost:8000/api/settings/keys").catch(() => null),
+          }>(`${getApiBaseUrl()}/api/settings/keys`).catch(() => null),
         ]);
         if (!isMounted) return;
         setBackendStatus("online");
@@ -142,7 +143,7 @@ export default function SettingsPage() {
     setGroqTest({ status: "testing", message: "Verifying Groq API Key..." });
     try {
       const res = await axios.post<{ valid: boolean; message: string }>(
-        "http://localhost:8000/api/settings/test-groq",
+        `${getApiBaseUrl()}/api/settings/test-groq`,
         { api_key: groqKey.trim() || undefined }
       );
       if (res.data.valid) {
@@ -163,7 +164,7 @@ export default function SettingsPage() {
     setGeminiTest({ status: "testing", message: "Verifying Gemini API Key..." });
     try {
       const res = await axios.post<{ valid: boolean; message: string }>(
-        "http://localhost:8000/api/settings/test-gemini",
+        `${getApiBaseUrl()}/api/settings/test-gemini`,
         { api_key: geminiKey.trim() || undefined }
       );
       if (res.data.valid) {
@@ -184,7 +185,7 @@ export default function SettingsPage() {
     setCfTest({ status: "testing", message: "Verifying Cloudflare Workers AI connection..." });
     try {
       const res = await axios.post<{ valid: boolean; message: string }>(
-        "http://localhost:8000/api/settings/test-cloudflare",
+        `${getApiBaseUrl()}/api/settings/test-cloudflare`,
         { api_key: cfToken.trim() || undefined }
       );
       if (res.data.valid) {
@@ -694,7 +695,7 @@ export default function SettingsPage() {
                     setAddingPreset(true);
                     setAddPresetError("");
                     try {
-                      const res = await axios.post<{ preset: PresetItem }>("http://localhost:8000/api/presets", {
+                      const res = await axios.post<{ preset: PresetItem }>(`${getApiBaseUrl()}/api/presets`, {
                         title: newPresetTitle.trim(),
                         prompt: newPresetPrompt.trim(),
                       });
@@ -735,7 +736,7 @@ export default function SettingsPage() {
                       onClick={async () => {
                         setDeletingId(preset.id);
                         try {
-                          await axios.delete(`http://localhost:8000/api/presets/${preset.id}`);
+                          await axios.delete(`${getApiBaseUrl()}/api/presets/${preset.id}`);
                           setPresets((prev) => prev.filter((p) => p.id !== preset.id));
                         } catch {
                           // silently ignore

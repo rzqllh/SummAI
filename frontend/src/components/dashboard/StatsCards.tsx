@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Users2, Clock, AudioLines, HardDrive } from "lucide-react";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface StatsData {
   total_meetings: number;
@@ -22,7 +23,7 @@ export function StatsCards() {
     let isMounted = true;
     async function fetchStats() {
       try {
-        const res = await axios.get("http://localhost:8000/api/stats");
+        const res = await axios.get(`${getApiBaseUrl()}/api/stats`);
         if (isMounted && res.data && res.data.total_meetings !== undefined) {
           setStats(res.data);
         }

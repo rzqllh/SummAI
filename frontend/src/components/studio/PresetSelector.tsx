@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface PresetItem {
   id: string;
@@ -269,7 +270,7 @@ export function PresetSelector({
   useEffect(() => {
     let isMounted = true;
     axios
-      .get<{ presets?: PresetItem[] }>("http://localhost:8000/api/presets")
+      .get<{ presets?: PresetItem[] }>(`${getApiBaseUrl()}/api/presets`)
       .then((res) => {
         if (isMounted && res.data.presets && res.data.presets.length > 0) {
           setPresetList(res.data.presets);

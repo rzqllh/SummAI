@@ -14,6 +14,7 @@ import {
   Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface MeetingItem {
   id: number;
@@ -34,7 +35,7 @@ export function RecentMeetingsList() {
     let isMounted = true;
     async function load() {
       try {
-        const res = await axios.get("http://localhost:8000/api/history");
+        const res = await axios.get(`${getApiBaseUrl()}/api/history`);
         if (isMounted) {
           const list = res.data.meetings || res.data || [];
           setMeetings(list.slice(0, 5));

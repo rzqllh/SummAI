@@ -21,6 +21,7 @@ import { SummaryExporter } from "@/components/studio/SummaryExporter";
 import { TranscriptTips } from "@/components/studio/TranscriptTips";
 import { RecentJobsWidget } from "@/components/studio/RecentJobsWidget";
 import { ActiveJobCard } from "@/components/studio/ActiveJobCard";
+import { getApiBaseUrl } from "@/lib/api";
 
 export default function SummarizerStudioPage() {
   const [currentStep, setCurrentStep] = useState<StudioStep>(1);
@@ -123,16 +124,23 @@ export default function SummarizerStudioPage() {
       if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
       if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
 
-      const res = await axios.post("http://localhost:8000/api/upload", formData, {
-        headers,
-        signal: controller.signal,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percent = Math.round((progressEvent.loaded * 45) / progressEvent.total);
-            setUploadProgress(Math.max(percent, simProgress));
-          }
-        },
-      });
+      const res = await axios.post(
+        `${getApiBaseUrl()}/api/upload`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            ...headers,
+          },
+          signal: abortControllerRef.current.signal,
+          onUploadProgress: (progressEvent) => {
+            const total = progressEvent.total || selectedFile.size;
+            const percent = Math.round((progressEvent.loaded * 100) / total);
+            // Cap upload progress at 65% since transcription pipeline follows
+            setUploadProgress(Math.min(65, percent));
+          },
+        }
+      );
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -206,7 +214,7 @@ export default function SummarizerStudioPage() {
       if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
 
       const res = await axios.post(
-        "http://localhost:8000/api/summarize",
+        `${getApiBaseUrl()}/api/summarize`,
         {
           raw_transcript: transcript,
           filename: filename || "Manual Upload",

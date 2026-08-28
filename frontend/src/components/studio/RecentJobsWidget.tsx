@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface RecentJob {
   id: number;
@@ -58,7 +59,7 @@ export function RecentJobsWidget({ onSelectMeeting }: RecentJobsWidgetProps) {
   useEffect(() => {
     let isMounted = true;
     axios
-      .get("http://localhost:8000/api/history")
+      .get(`${getApiBaseUrl()}/api/history`)
       .then((res) => {
         if (isMounted) {
           const list = res.data.meetings || res.data || [];
