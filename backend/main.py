@@ -57,6 +57,10 @@ class SummarizeRequest(BaseModel):
 class TestKeyRequest(BaseModel):
     api_key: Optional[str] = None
 
+class CreatePresetRequest(BaseModel):
+    title: str
+    prompt: str
+
 @app.get("/api/settings/keys")
 async def get_keys_status():
     load_dotenv(override=True)
@@ -229,11 +233,35 @@ async def get_stats_api():
 
 @app.get("/api/presets")
 async def get_presets():
-    return {
-        "presets": [
-            {"id": "exec", "title": "Executive Summary", "prompt": "Provide a high-level executive summary with key takeaways and strategic decisions."},
-            {"id": "jira", "title": "Action Items & Jira Tasks", "prompt": "Extract explicit action items with assignees, deadlines, and formatted Jira task descriptions."},
-            {"id": "retro", "title": "Sprint Retrospective", "prompt": "Categorize points into What Went Well, What Could Be Improved, and Action Points."},
-            {"id": "tech", "title": "Technical Architecture Review", "prompt": "Summarize technical decisions, engineering constraints, and system design specs discussed."}
-        ]
-    }
+    builtin = [
+        {"id": "exec",  "title": "Executive Summary",         "prompt": "Provide a high-level executive summary with key takeaways and strategic decisions.",                                "custom": False},
+        {"id": "jira",  "title": "Action Items & Jira Tasks",  "prompt": "Extract explicit action items with assignees, deadlines, and formatted Jira task descriptions.",              "custom": False},
+        {"id": "retro", "title": "Sprint Retrospective",       "prompt": "Categorize points into What Went Well, What Could Be Improved, and Action Points.",                          "custom": False},
+        {"id": "tech",  "title": "Technical Architecture Review", "prompt": "Summarize technical decisions, engineering constraints, and system design specs discussed.",              "custom": False},
+    ]
+    custom = await asyncio.to_thread(db.get_custom_presets)
+    return {"presets": builtin + custom}
+
+@app.post("/api/presets", status_code=201)
+async def create_preset(req: CreatePresetRequest):
+    title = req.title.strip()
+    prompt = req.prompt.strip()
+    if not title or not prompt:
+        raise HTTPException(status_code=400, detail="title and prompt are required")
+    if len(title) > 120:
+        raise HTTPException(status_code=400, detail="title must be 120 characters or fewer")
+    if len(prompt) > 2000:
+        raise HTTPException(status_code=400, detail="prompt must be 2000 characters or fewer")
+    preset = await asyncio.to_thread(db.save_custom_preset, title, prompt)
+    return {"preset": preset}
+
+@app.delete("/api/presets/{preset_id}")
+async def delete_preset(preset_id: str):
+    if not preset_id.startswith("custom_"):
+        raise HTTPException(status_code=400, detail="Built-in presets cannot be deleted")
+    try:
+        db_id = int(preset_id.replace("custom_", ""))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid preset id")
+    await asyncio.to_thread(db.delete_custom_preset, db_id)
+    return {"status": "deleted", "id": preset_id}

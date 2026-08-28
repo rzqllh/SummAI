@@ -19,6 +19,9 @@ import {
   AudioLines,
   Cloud,
   Layers,
+  Plus,
+  Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -26,6 +29,7 @@ interface PresetItem {
   id: string;
   title: string;
   prompt: string;
+  custom?: boolean;
 }
 
 export default function SettingsPage() {
@@ -40,6 +44,14 @@ export default function SettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
   const [presets, setPresets] = useState<PresetItem[]>([]);
+
+  // Add preset form state
+  const [showAddPreset, setShowAddPreset] = useState(false);
+  const [newPresetTitle, setNewPresetTitle] = useState("");
+  const [newPresetPrompt, setNewPresetPrompt] = useState("");
+  const [addingPreset, setAddingPreset] = useState(false);
+  const [addPresetError, setAddPresetError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Server keys metadata
   const [serverKeys, setServerKeys] = useState<{
@@ -610,27 +622,140 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Preset Library Reference */}
+      {/* Preset Library */}
       <div className="glass-card rounded-2xl p-4 sm:p-6 border border-slate-800/80 bg-slate-950/60 shadow-xl space-y-4">
-        <div className="flex items-center gap-2 border-b border-slate-800/80 pb-3">
-          <Sliders className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-base font-bold text-white tracking-tight">
-            Available Prompt Presets
-          </h2>
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-base font-bold text-white tracking-tight">
+              Available Prompt Presets
+            </h2>
+          </div>
+          {!showAddPreset && (
+            <button
+              type="button"
+              onClick={() => { setShowAddPreset(true); setAddPresetError(""); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 text-xs font-semibold transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Preset
+            </button>
+          )}
         </div>
+
+        {/* Add preset inline form */}
+        {showAddPreset && (
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-cyan-500/20 space-y-3 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-cyan-400">New Custom Preset</span>
+              <button
+                type="button"
+                onClick={() => { setShowAddPreset(false); setNewPresetTitle(""); setNewPresetPrompt(""); setAddPresetError(""); }}
+                className="text-slate-400 hover:text-slate-200 p-1"
+                aria-label="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={newPresetTitle}
+                onChange={(e) => setNewPresetTitle(e.target.value)}
+                placeholder="Preset name (e.g. Sales Call Summary)"
+                maxLength={120}
+                className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-500"
+              />
+              <textarea
+                value={newPresetPrompt}
+                onChange={(e) => setNewPresetPrompt(e.target.value)}
+                placeholder="Prompt instruction sent to the LLM..."
+                rows={3}
+                maxLength={2000}
+                className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-500 resize-none font-mono"
+              />
+              <div className="flex items-center justify-between">
+                {addPresetError ? (
+                  <span className="text-xs text-rose-400 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {addPresetError}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-500">
+                    {newPresetPrompt.length}/2000
+                  </span>
+                )}
+                <button
+                  type="button"
+                  disabled={addingPreset || !newPresetTitle.trim() || !newPresetPrompt.trim()}
+                  onClick={async () => {
+                    setAddingPreset(true);
+                    setAddPresetError("");
+                    try {
+                      const res = await axios.post<{ preset: PresetItem }>("http://localhost:8000/api/presets", {
+                        title: newPresetTitle.trim(),
+                        prompt: newPresetPrompt.trim(),
+                      });
+                      setPresets((prev) => [...prev, res.data.preset]);
+                      setNewPresetTitle("");
+                      setNewPresetPrompt("");
+                      setShowAddPreset(false);
+                    } catch (err: unknown) {
+                      const axErr = err as AxiosError<{ detail?: string }>;
+                      setAddPresetError(axErr.response?.data?.detail || "Failed to save preset");
+                    } finally {
+                      setAddingPreset(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs transition-colors"
+                >
+                  {addingPreset ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                  Save Preset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {presets.map((preset) => (
             <div
               key={preset.id}
-              className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 space-y-1.5 text-xs hover:border-slate-700 transition-colors"
+              className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 space-y-1.5 text-xs hover:border-slate-700 transition-colors group relative"
             >
-              <div className="font-bold text-slate-200 text-sm">
-                {preset.title}
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-bold text-slate-200 text-sm">{preset.title}</div>
+                {preset.custom && (
+                  <button
+                    type="button"
+                    disabled={deletingId === preset.id}
+                    onClick={async () => {
+                      setDeletingId(preset.id);
+                      try {
+                        await axios.delete(`http://localhost:8000/api/presets/${preset.id}`);
+                        setPresets((prev) => prev.filter((p) => p.id !== preset.id));
+                      } catch {
+                        // silently ignore — preset stays
+                      } finally {
+                        setDeletingId(null);
+                      }
+                    }}
+                    className="shrink-0 p-1 rounded text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    aria-label={`Delete ${preset.title}`}
+                  >
+                    {deletingId === preset.id
+                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      : <Trash2 className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
               <p className="text-slate-400 font-mono text-[11px] leading-relaxed">
                 &quot;{preset.prompt}&quot;
               </p>
+              {preset.custom && (
+                <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-mono border border-cyan-500/20">custom</span>
+              )}
             </div>
           ))}
         </div>

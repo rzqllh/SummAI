@@ -25,6 +25,14 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS custom_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.commit()
 
 def save_meeting(filename: str, media_type: str, raw_transcript: str, summary: str):
@@ -131,6 +139,27 @@ def get_stats():
         "estimated_minutes": round(total_chars / 500, 1),
         "hours_saved": round(count * 0.75, 1)
     }
+
+def get_custom_presets() -> list[dict]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, prompt FROM custom_presets ORDER BY created_at ASC")
+        rows = cursor.fetchall()
+    return [{"id": f"custom_{row[0]}", "db_id": row[0], "title": row[1], "prompt": row[2], "custom": True} for row in rows]
+
+def save_custom_preset(title: str, prompt: str) -> dict:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO custom_presets (title, prompt) VALUES (?, ?)", (title, prompt))
+        conn.commit()
+        new_id = cursor.lastrowid
+    return {"id": f"custom_{new_id}", "db_id": new_id, "title": title, "prompt": prompt, "custom": True}
+
+def delete_custom_preset(db_id: int):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM custom_presets WHERE id = ?", (db_id,))
+        conn.commit()
 
 # Initialize on import
 init_db()
