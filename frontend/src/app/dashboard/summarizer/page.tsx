@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { StepIndicator, StudioStep } from "@/components/studio/StepIndicator";
 import { TranscriptReviewer } from "@/components/studio/TranscriptReviewer";
 import { PresetSelector } from "@/components/studio/PresetSelector";
+import { SynthesisProgressCard } from "@/components/studio/SynthesisProgressCard";
 import { SummaryExporter } from "@/components/studio/SummaryExporter";
 import { TranscriptTips } from "@/components/studio/TranscriptTips";
 import { RecentJobsWidget } from "@/components/studio/RecentJobsWidget";
@@ -429,15 +430,22 @@ export default function SummarizerStudioPage() {
         </div>
       )}
 
-      {/* STEP 3: Select Synthesis Preset */}
+      {/* STEP 3: Select Synthesis Preset or View Progress */}
       {currentStep === 3 && (
-        <PresetSelector
-          customPrompt={customPrompt}
-          onCustomPromptChange={(val) => setCustomPrompt(val)}
-          onGenerate={handleSummarize}
-          onBack={() => setCurrentStep(2)}
-          isGenerating={isSummarizing}
-        />
+        isSummarizing ? (
+          <SynthesisProgressCard
+            isSynthesizing={isSummarizing}
+            presetTitle={customPrompt ? "Selected Preset" : "Corporate MoM"}
+          />
+        ) : (
+          <PresetSelector
+            customPrompt={customPrompt}
+            onCustomPromptChange={(val) => setCustomPrompt(val)}
+            onGenerate={handleSummarize}
+            onBack={() => setCurrentStep(2)}
+            isGenerating={isSummarizing}
+          />
+        )
       )}
 
       {/* STEP 4: Export & Download Summary */}
