@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { MeetingMarkdown } from "@/components/markdown/MeetingMarkdown";
 import {
   Copy,
   CheckCircle2,
@@ -141,8 +141,8 @@ export function SummaryExporter({
       </div>
 
       {/* Rendered Summary Box */}
-      <div className="p-6 rounded-xl bg-slate-950/80 border border-slate-800/90 max-h-[550px] overflow-y-auto prose prose-invert prose-emerald prose-sm max-w-none">
-        <ReactMarkdown>{summary}</ReactMarkdown>
+      <div className="p-6 rounded-xl bg-slate-950/80 border border-slate-800/90 max-h-[550px] overflow-y-auto">
+        <MeetingMarkdown content={summary} />
       </div>
 
       {/* Footer Navigation */}

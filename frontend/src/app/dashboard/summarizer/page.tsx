@@ -11,6 +11,8 @@ import {
   Sparkles,
   Zap,
   Cloud,
+  RotateCcw,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator, StudioStep } from "@/components/studio/StepIndicator";
@@ -23,6 +25,8 @@ import { RecentJobsWidget } from "@/components/studio/RecentJobsWidget";
 import { ActiveJobCard } from "@/components/studio/ActiveJobCard";
 import { AudioPlayerWidget } from "@/components/studio/AudioPlayerWidget";
 import { MicrophoneRecorder } from "@/components/studio/MicrophoneRecorder";
+import { uploadFileInChunks } from "@/lib/chunkUpload";
+import { saveStudioDraft, getStudioDraft, clearStudioDraft, StudioDraft } from "@/lib/draftStorage";
 import { getApiBaseUrl } from "@/lib/api";
 
 export default function SummarizerStudioPage() {
@@ -32,6 +36,7 @@ export default function SummarizerStudioPage() {
   // File upload & metadata state
   const [file, setFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
+  const [title, setTitle] = useState("");
   const [filesize, setFilesize] = useState("");
   const [duration, setDuration] = useState("00:15:00");
   const [mediaType, setMediaType] = useState("");
@@ -45,6 +50,7 @@ export default function SummarizerStudioPage() {
   const [summary, setSummary] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(null);
 
   // Provider tracking state
   const [sttProvider, setSttProvider] = useState("");
@@ -55,13 +61,45 @@ export default function SummarizerStudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Format file size
+  // Check for unsaved draft on load
+  useEffect(() => {
+    const draft = getStudioDraft();
+    if (draft && draft.transcript && !transcript) {
+      setRecoveredDraft(draft);
+    }
+  }, []);
+
+  // Autosave draft on edit
+  useEffect(() => {
+    if (transcript || filename) {
+      saveStudioDraft({
+        filename,
+        transcript,
+        customPrompt,
+        step: currentStep,
+      });
+    }
+  }, [transcript, filename, customPrompt, currentStep]);
+
+  const handleRestoreDraft = () => {
+    if (!recoveredDraft) return;
+    setFilename(recoveredDraft.filename);
+    setTranscript(recoveredDraft.transcript);
+    setCustomPrompt(recoveredDraft.customPrompt);
+    setCurrentStep(Math.min(recoveredDraft.step, 3) as StudioStep);
+    setMaxReachedStep(Math.min(recoveredDraft.step, 3) as StudioStep);
+    setRecoveredDraft(null);
+  };
+
+  const handleDiscardDraft = () => {
+    clearStudioDraft();
+    setRecoveredDraft(null);
+  };
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 MB";
     const mb = bytes / (1024 * 1024);
-    if (mb < 1) {
-      return (bytes / 1024).toFixed(1) + " KB";
-    }
+    if (mb < 1) return (bytes / 1024).toFixed(1) + " KB";
     return mb.toFixed(1) + " MB";
   };
 
@@ -73,46 +111,29 @@ export default function SummarizerStudioPage() {
     setMediaType(ext);
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
     setErrorMessage("");
 
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    // Save controller for cancellation
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      const res = await axios.post(
-        `${getApiBaseUrl()}/api/upload`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          signal: controller.signal,
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              // Max 90% during actual upload, 100% when server responds
-              setUploadProgress(Math.min(percent, 90));
-            }
-          },
-        }
-      );
+      const res = await uploadFileInChunks({
+        file: selectedFile,
+        onProgress: (percent) => setUploadProgress(percent),
+        signal: controller.signal,
+      });
 
-      setTranscript(res.data.transcript || "");
-      setSttProvider(res.data.provider_used || "Groq Whisper Large-v3");
-      setSttFallback(res.data.fallback_applied || false);
+      setTranscript(res.transcript || "");
+      setSttProvider(res.provider_used || "Groq Whisper Large-v3");
+      setSttFallback(res.fallback_applied || false);
       setUploadProgress(100);
 
-      // Auto advance to Step 2
       setTimeout(() => {
         setIsUploading(false);
         setCurrentStep(2);
         setMaxReachedStep((prev) => Math.max(prev, 2) as StudioStep);
-      }, 500);
+      }, 400);
     } catch (err: unknown) {
       if (axios.isCancel(err) || (err as Error).name === "CanceledError") {
         setIsUploading(false);
@@ -142,28 +163,37 @@ export default function SummarizerStudioPage() {
     if (!transcript) return;
     setIsSummarizing(true);
     setErrorMessage("");
-
-    // Step 3 to show progress
     setCurrentStep(3);
 
     const promptToSend = overridePrompt || customPrompt;
 
     try {
-      const res = await axios.post(
-        `${getApiBaseUrl()}/api/summarize`,
-        {
-          raw_transcript: transcript,
-          filename: filename || "Pasted-Transcript.txt",
-          media_type: mediaType || "txt",
-          custom_prompt: promptToSend || null,
+      // 1. Auto-generate professional title in parallel
+      let autoTitle = filename.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+      try {
+        const titleRes = await axios.post(`${getApiBaseUrl()}/api/generate-title`, {
+          transcript: transcript.slice(0, 2000),
+        });
+        if (titleRes.data.title) {
+          autoTitle = titleRes.data.title;
+          setTitle(autoTitle);
         }
-      );
+      } catch {}
+
+      // 2. Synthesize Meeting Notes
+      const res = await axios.post(`${getApiBaseUrl()}/api/summarize`, {
+        raw_transcript: transcript,
+        filename: filename || "Pasted-Transcript.txt",
+        title: autoTitle,
+        media_type: mediaType || "txt",
+        custom_prompt: promptToSend || null,
+      });
 
       setSummary(res.data.summary);
       setLlmProvider(res.data.provider_used || "Google Gemini Flash");
       setLlmFallback(res.data.fallback_applied || false);
+      clearStudioDraft();
 
-      // Advance to Step 4
       setTimeout(() => {
         setIsSummarizing(false);
         setCurrentStep(4);
@@ -181,10 +211,12 @@ export default function SummarizerStudioPage() {
   };
 
   const handleReset = () => {
+    clearStudioDraft();
     setCurrentStep(1);
     setMaxReachedStep(1);
     setFile(null);
     setFilename("");
+    setTitle("");
     setFilesize("");
     setTranscript("");
     setCustomPrompt("");
@@ -225,6 +257,35 @@ export default function SummarizerStudioPage() {
         maxReachedStep={maxReachedStep}
         onStepClick={handleStepClick}
       />
+
+      {/* Recovered Draft Notice */}
+      {recoveredDraft && currentStep === 1 && (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3 text-emerald-300 text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              Unsaved draft recovered: <strong>{recoveredDraft.filename || "Previous Transcript"}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleRestoreDraft}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs h-7 px-3 rounded-lg"
+            >
+              Restore Draft
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDiscardDraft}
+              className="text-slate-400 hover:text-white text-xs h-7 px-2.5 rounded-lg"
+            >
+              Discard
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Global Error Banner */}
       {errorMessage && (
@@ -417,7 +478,7 @@ export default function SummarizerStudioPage() {
           <SummaryExporter
             summary={summary}
             rawTranscript={transcript}
-            filename={filename}
+            filename={title || filename}
             onReset={handleReset}
           />
         </div>

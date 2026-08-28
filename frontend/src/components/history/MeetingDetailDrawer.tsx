@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import { MeetingMarkdown } from "@/components/markdown/MeetingMarkdown";
 import {
   X,
   FileText,
@@ -13,10 +13,12 @@ import {
   Trash2,
   Bot,
   FileCode,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { exportToPdf, exportToDocx } from "@/lib/exportUtils";
 import { MeetingChatDrawer } from "@/components/studio/MeetingChatDrawer";
+import { ShareLinkModal } from "./ShareLinkModal";
 
 export interface HistoryMeeting {
   id: number;
@@ -41,6 +43,7 @@ export function MeetingDetailDrawer({
   const [activeTab, setActiveTab] = useState<"summary" | "transcript">("summary");
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   if (!meeting) return null;
 
@@ -228,6 +231,16 @@ export function MeetingDetailDrawer({
               <Button
                 size="sm"
                 variant="outline"
+                onClick={() => setIsShareOpen(true)}
+                className="border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs h-8 px-2.5 rounded-lg flex items-center gap-1"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Share</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={handleDownload}
                 className="border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs h-8"
               >
@@ -240,9 +253,7 @@ export function MeetingDetailDrawer({
           {/* Body Content */}
           <div className="flex-1 overflow-y-auto p-6">
             {activeTab === "summary" ? (
-              <div className="prose prose-invert prose-emerald prose-sm max-w-none">
-                <ReactMarkdown>{meeting.summary}</ReactMarkdown>
-              </div>
+              <MeetingMarkdown content={meeting.summary} />
             ) : (
               <div className="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-slate-950 p-4 rounded-xl border border-slate-800">
                 {meeting.raw_transcript}
@@ -258,6 +269,14 @@ export function MeetingDetailDrawer({
         onClose={() => setIsChatOpen(false)}
         rawTranscript={meeting.raw_transcript}
         summary={meeting.summary}
+        meetingTitle={meeting.filename}
+      />
+
+      {/* Share Link Modal */}
+      <ShareLinkModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
+        meetingId={meeting.id}
         meetingTitle={meeting.filename}
       />
     </div>
