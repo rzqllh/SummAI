@@ -53,3 +53,10 @@ docs/
 dummy.txt
 meetings.db
 skills-lock.json
+
+# AI agent internal artifacts & planning docs
+.gemini/
+SUMMAI_*
+implementation_plan.md
+walkthrough.md
+task.md
