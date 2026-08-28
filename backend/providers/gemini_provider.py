@@ -26,7 +26,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         client = genai.Client(api_key=key.strip())
         
         # Try modern Flash models in order
-        candidate_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]
+        candidate_models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash"]
         last_error = None
 
         for model_id in candidate_models:
@@ -66,7 +66,7 @@ class GeminiLLMProvider(BaseLLMProvider):
         try:
             client = genai.Client(api_key=key.strip())
             client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3.6-flash",
                 contents="Ping test. Respond with OK.",
             )
             return {"valid": True, "message": "Gemini API key is active and verified!"}
