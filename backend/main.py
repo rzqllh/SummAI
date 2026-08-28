@@ -281,7 +281,7 @@ CORE RULES
   [CONFIRM: ...]
 - Never silently fill missing metadata.
 - If Date, Time, Venue, Attendees, PIC, or Due Date are unavailable, use "TBC" or leave them explicitly unresolved.
-- Preserve domain terminology such as BNG, PE-HSI, Metro, NGN, NeuCentrIX, DCPDB, Sarpen, Sartel, O&M, VLAN, OLT, etc.
+- Preserve domain terminology such as API, Microservices, CI/CD, Kubernetes, DB Cluster, SLA, VLAN, Gateway, Cloudflare, AWS, etc.
 - Do not over-explain obvious technical terms.
 - Do not write the output as speaker-by-speaker transcript.
 - Do not use generic phrases such as "the meeting discussed several topics" when the actual topic can be stated directly.
@@ -291,9 +291,9 @@ CORE RULES
 
 IMPORTANT DECISION RULE
 A statement such as:
-"if the PKS confirms NGN, installation can continue"
+"if the contract confirms staging cluster, migration can continue"
 MUST NOT become:
-"installation will continue in NGN"
+"migration will continue on staging cluster"
 Conditional statements must remain conditional.
 
 OUTPUT FORMAT
@@ -364,7 +364,7 @@ RULES
 - Fix obvious ASR errors only when context makes the intended term highly reliable.
 - Preserve speaker attribution when reasonably identifiable.
 - If speaker identity is uncertain, use neutral labels such as:
-  "Tim DWS", "Tim Area", "Telkomsel", "TIF", "Speaker", etc.
+  "Engineering Team", "Product Team", "Client Partner", "Operations", "Speaker", etc.
 - Never invent speaker names.
 - Do NOT summarize.
 - Do NOT collapse long discussion into bullet-point conclusions.
@@ -377,9 +377,9 @@ RULES
 - Normalize obvious technical ASR mistakes where confidence is high.
 
 Example:
-"new century / new centric" → "NeuCentrIX"
-"NJN / NGL" → "NGN"
-"DC PDB / DCPDD" → "DCPDB"
+"micro services / micro service" → "Microservices"
+"postgress / postgresql" → "PostgreSQL"
+"data base / db" → "Database"
 Only perform these corrections when context supports them.
 
 OUTPUT:
@@ -396,8 +396,8 @@ At the end add:
 
 ## Transcription Notes
 Only list meaningful corrections or unresolved ambiguities, for example:
-- "new century" normalized to "NeuCentrIX" based on context.
-- [UNCLEAR] Power requirement sounded like either 2×200A or 3×200A.
+- "postgress" normalized to "PostgreSQL" based on context.
+- [UNCLEAR] Feeder requirement sounded like either 2x200A or 3x200A.
 
 Do not add a meeting summary.""",
             "custom": False,

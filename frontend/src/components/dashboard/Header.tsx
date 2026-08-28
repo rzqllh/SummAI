@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
 import { UserNav } from "@/components/auth/UserNav";
 
 interface HeaderProps {
@@ -19,13 +18,13 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
     if (pathname === "/dashboard") {
       return {
         title: "Overview",
-        description: "Analytics & quick meeting upload",
+        description: "Analytics & meeting library",
       };
     }
     if (pathname.startsWith("/dashboard/summarizer")) {
       return {
         title: "Summarizer Studio",
-        description: "4-step AI transcription and structured synthesis",
+        description: "4-step AI transcription & structured synthesis",
       };
     }
     if (pathname.startsWith("/dashboard/history")) {
@@ -37,7 +36,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
     if (pathname.startsWith("/dashboard/settings")) {
       return {
         title: "Settings & Presets",
-        description: "Configure API credentials and custom prompt templates",
+        description: "Configure API credentials and prompt templates",
       };
     }
     return {
@@ -47,6 +46,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   };
 
   const { title, description } = getPageInfo();
+  const isSummarizer = pathname.startsWith("/dashboard/summarizer");
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -55,52 +55,44 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   }, [title]);
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-8 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 md:px-8 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-md transition-all">
+      <div className="flex items-center gap-3">
         {/* Mobile menu trigger */}
         <button
           onClick={onOpenMobileMenu}
-          className="p-2 -ml-2 text-slate-400 rounded-lg md:hidden hover:text-white hover:bg-slate-900 transition-colors"
+          className="p-1.5 -ml-1 text-slate-400 rounded-lg md:hidden hover:text-white hover:bg-slate-900 transition-colors"
           aria-label="Toggle navigation menu"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-4.5 h-4.5" />
         </button>
 
         <div>
-          <h1 className="text-base md:text-lg font-semibold tracking-tight text-white flex items-center gap-2">
+          <h1 className="text-sm font-semibold tracking-tight text-white flex items-center gap-2">
             {title}
           </h1>
-          <p className="hidden sm:block text-xs text-slate-400">
+          <p className="hidden sm:block text-[11px] text-slate-400">
             {description}
           </p>
         </div>
       </div>
 
-      {/* Action buttons, system health, and User Authentication */}
-      <div className="flex items-center gap-3">
-        {/* Engine status indicator */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
-          <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="text-[11px] font-medium text-slate-400">
-            Local SQLite <span className="text-slate-600">|</span> Groq STT
-          </span>
-        </div>
-
-        {/* User Auth Profile Dropdown */}
+      {/* Action controls & User Navigation */}
+      <div className="flex items-center gap-2.5">
+        {/* User Account / Workspace Pill */}
         <UserNav />
 
-        <Link href="/dashboard/summarizer">
-          <Button
-            size="sm"
-            className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-semibold shadow-md shadow-emerald-500/20 text-xs px-3.5 h-9 rounded-xl flex items-center gap-1.5 transition-all"
-          >
-            <Plus className="w-3.5 h-3.5 font-bold" />
-            <span>New Summary</span>
-          </Button>
-        </Link>
+        {/* Primary Action Button (hidden when already on Summarizer page to reduce noise) */}
+        {!isSummarizer && (
+          <Link href="/dashboard/summarizer">
+            <Button
+              size="sm"
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-sm text-xs px-3 h-8 rounded-lg flex items-center gap-1.5 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">New Summary</span>
+            </Button>
+          </Link>
+        )}
       </div>
     </header>
   );

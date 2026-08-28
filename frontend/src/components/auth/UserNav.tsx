@@ -35,32 +35,29 @@ export function UserNav() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 text-xs text-slate-200 transition-all duration-150 focus:outline-none focus:border-emerald-500/50"
+        className="flex items-center gap-2 h-8 px-2.5 rounded-lg bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 text-xs text-slate-300 hover:text-white transition-all duration-150 focus:outline-none focus:border-slate-700"
       >
         {user.image ? (
           <Image
             src={user.image}
             alt={user.name}
-            width={22}
-            height={22}
-            className="w-5.5 h-5.5 rounded-full object-cover border border-emerald-500/30"
+            width={18}
+            height={18}
+            className="w-4.5 h-4.5 rounded-full object-cover border border-slate-700 shrink-0"
           />
         ) : (
-          <div className="w-5.5 h-5.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <User className="w-3 h-3" />
+          <div className="w-4.5 h-4.5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0">
+            <User className="w-2.5 h-2.5" />
           </div>
         )}
 
-        <div className="text-left hidden sm:block max-w-[130px] truncate">
-          <div className="font-semibold text-slate-200 truncate leading-tight">
-            {isDefault ? "Guest Workspace" : user.name}
-          </div>
-          <div className="text-[10px] text-slate-400 truncate font-mono">
-            {isDefault ? "Local Isolation" : user.email}
+        <div className="text-left hidden sm:block max-w-[110px] truncate">
+          <div className="font-medium text-slate-200 text-xs truncate leading-tight">
+            {isDefault ? "Personal" : user.name}
           </div>
         </div>
 
-        <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
       </button>
 
       {/* Dropdown Menu */}
@@ -137,7 +134,7 @@ export function UserNav() {
                       type="email"
                       value={customInput}
                       onChange={(e) => setCustomInput(e.target.value)}
-                      placeholder="e.g. user@telkom.co.id"
+                      placeholder="e.g. user@example.com"
                       className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500"
                     />
                     <Button
