@@ -28,7 +28,7 @@ Upload a meeting recording or paste a raw transcript. SummAI runs it through Gro
 - Sprint Retrospective
 - Technical Architecture Review
 
-**Cost:** $0. Both Groq and Gemini offer free-tier API keys that cover normal meeting workloads.
+**Cost:** $0. Both Groq and Gemini have free-tier API keys. Check their rate limits for your usage volume.
 
 ## How it works
 
@@ -87,19 +87,18 @@ cd frontend && npm install && cd ..
 
 From the root folder:
 
-```bash
+```powershell
 # Windows PowerShell
 .\dev.ps1
 ```
-
-Or double-click `start.bat` in File Explorer.
 
 Both servers start together: backend on port `8000`, frontend on port `3000`.
 
 ### Start separately
 
-```bash
-# Backend only
+```powershell
+# Backend only (from root, with venv active)
+.venv\Scripts\activate
 uvicorn backend.main:app --reload --port 8000
 
 # Frontend only (in a separate terminal)
