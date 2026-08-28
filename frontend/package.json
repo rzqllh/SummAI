@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:all": "concurrently -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"cd .. && .\\.venv\\Scripts\\uvicorn.exe backend.main:app --reload --port 8000\" \"next dev\",
+    "dev:all": "concurrently -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"cd .. && .venv/Scripts/uvicorn.exe backend.main:app --reload --port 8000\" \"next dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
