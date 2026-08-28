@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 interface PresetItem {
   id: string;
   title: string;
+  description?: string;
   prompt: string;
   custom?: boolean;
 }
@@ -664,16 +665,16 @@ export default function SettingsPage() {
                 value={newPresetTitle}
                 onChange={(e) => setNewPresetTitle(e.target.value)}
                 placeholder="Preset name (e.g. Sales Call Summary)"
-                maxLength={120}
+                maxLength={150}
                 className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-500"
               />
               <textarea
                 value={newPresetPrompt}
                 onChange={(e) => setNewPresetPrompt(e.target.value)}
-                placeholder="Prompt instruction sent to the LLM..."
-                rows={3}
-                maxLength={2000}
-                className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-500 resize-none font-mono"
+                placeholder="Prompt instruction sent to the LLM (roles, rules, format requirements)..."
+                rows={5}
+                maxLength={10000}
+                className="w-full px-3 py-2 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 placeholder:text-slate-500 resize-y font-mono"
               />
               <div className="flex items-center justify-between">
                 {addPresetError ? (
@@ -683,7 +684,7 @@ export default function SettingsPage() {
                   </span>
                 ) : (
                   <span className="text-[11px] text-slate-500">
-                    {newPresetPrompt.length}/2000
+                    {newPresetPrompt.length}/10000
                   </span>
                 )}
                 <button
@@ -722,39 +723,49 @@ export default function SettingsPage() {
           {presets.map((preset) => (
             <div
               key={preset.id}
-              className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 space-y-1.5 text-xs hover:border-slate-700 transition-colors group relative"
+              className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 space-y-2 text-xs hover:border-slate-700 transition-colors group relative flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-bold text-slate-200 text-sm">{preset.title}</div>
-                {preset.custom && (
-                  <button
-                    type="button"
-                    disabled={deletingId === preset.id}
-                    onClick={async () => {
-                      setDeletingId(preset.id);
-                      try {
-                        await axios.delete(`http://localhost:8000/api/presets/${preset.id}`);
-                        setPresets((prev) => prev.filter((p) => p.id !== preset.id));
-                      } catch {
-                        // silently ignore — preset stays
-                      } finally {
-                        setDeletingId(null);
-                      }
-                    }}
-                    className="shrink-0 p-1 rounded text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                    aria-label={`Delete ${preset.title}`}
-                  >
-                    {deletingId === preset.id
-                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      : <Trash2 className="w-3.5 h-3.5" />}
-                  </button>
+              <div className="space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-bold text-slate-200 text-sm">{preset.title}</div>
+                  {preset.custom && (
+                    <button
+                      type="button"
+                      disabled={deletingId === preset.id}
+                      onClick={async () => {
+                        setDeletingId(preset.id);
+                        try {
+                          await axios.delete(`http://localhost:8000/api/presets/${preset.id}`);
+                          setPresets((prev) => prev.filter((p) => p.id !== preset.id));
+                        } catch {
+                          // silently ignore
+                        } finally {
+                          setDeletingId(null);
+                        }
+                      }}
+                      className="shrink-0 p-1 rounded text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label={`Delete ${preset.title}`}
+                    >
+                      {deletingId === preset.id
+                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </div>
+                {preset.description ? (
+                  <p className="text-slate-300 text-xs leading-relaxed">
+                    &quot;{preset.description}&quot;
+                  </p>
+                ) : (
+                  <p className="text-slate-400 font-mono text-[11px] leading-relaxed line-clamp-3">
+                    &quot;{preset.prompt}&quot;
+                  </p>
                 )}
               </div>
-              <p className="text-slate-400 font-mono text-[11px] leading-relaxed">
-                &quot;{preset.prompt}&quot;
-              </p>
               {preset.custom && (
-                <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-mono border border-cyan-500/20">custom</span>
+                <div className="pt-1">
+                  <span className="inline-block px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-mono border border-cyan-500/20">custom</span>
+                </div>
               )}
             </div>
           ))}

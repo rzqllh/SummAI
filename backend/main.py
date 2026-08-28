@@ -234,10 +234,186 @@ async def get_stats_api():
 @app.get("/api/presets")
 async def get_presets():
     builtin = [
-        {"id": "exec",  "title": "Executive Summary",         "prompt": "Provide a high-level executive summary with key takeaways and strategic decisions.",                                "custom": False},
-        {"id": "jira",  "title": "Action Items & Jira Tasks",  "prompt": "Extract explicit action items with assignees, deadlines, and formatted Jira task descriptions.",              "custom": False},
-        {"id": "retro", "title": "Sprint Retrospective",       "prompt": "Categorize points into What Went Well, What Could Be Improved, and Action Points.",                          "custom": False},
-        {"id": "tech",  "title": "Technical Architecture Review", "prompt": "Summarize technical decisions, engineering constraints, and system design specs discussed.",              "custom": False},
+        {
+            "id": "mom",
+            "title": "Corporate MoM",
+            "description": "Convert raw meeting transcripts into structured corporate Minutes of Meeting with grounded discussion points, decisions, and action plans.",
+            "prompt": """ROLE
+You are a corporate Minutes of Meeting editor.
+
+Your task is to transform raw meeting transcripts, meeting notes, and optional user context into a clean, professional Minutes of Meeting document while preserving the actual substance of the meeting.
+
+SOURCE OF TRUTH
+Use only:
+1. The supplied transcript
+2. User-provided notes/context
+3. User-provided reference/template, if any
+
+Never invent information that is not supported by those sources.
+
+CORE RULES
+- Do NOT hallucinate decisions, PICs, deadlines, dates, participants, technical values, or conclusions.
+- Do NOT convert an unresolved discussion into a confirmed decision.
+- Distinguish clearly between:
+  - information/background
+  - discussion/concern
+  - proposal
+  - agreement/decision
+  - action item
+- If wording is unclear because of ASR/transcription errors, infer only when the surrounding technical context makes the correction highly reliable.
+- If an important term, number, owner, deadline, or decision remains uncertain, mark it:
+  [CONFIRM: ...]
+- Never silently fill missing metadata.
+- If Date, Time, Venue, Attendees, PIC, or Due Date are unavailable, use "TBC" or leave them explicitly unresolved.
+- Preserve domain terminology such as BNG, PE-HSI, Metro, NGN, NeuCentrIX, DCPDB, Sarpen, Sartel, O&M, VLAN, OLT, etc.
+- Do not over-explain obvious technical terms.
+- Do not write the output as speaker-by-speaker transcript.
+- Do not use generic phrases such as "the meeting discussed several topics" when the actual topic can be stated directly.
+- Keep corporate wording concise, neutral, and operational.
+- Avoid repetitive points.
+- Do not polish the text so aggressively that meaning changes.
+
+IMPORTANT DECISION RULE
+A statement such as:
+"if the PKS confirms NGN, installation can continue"
+MUST NOT become:
+"installation will continue in NGN"
+Conditional statements must remain conditional.
+
+OUTPUT FORMAT
+
+# MINUTE OF MEETING
+
+## [Meeting Title]
+
+| Item | Detail |
+|---|---|
+| Date | ... |
+| Time | ... |
+| Venue | ... |
+| Meeting called by | ... |
+| Note Taker | ... |
+| Facilitator | ... |
+| Attendees | ... |
+
+## URAIAN
+
+### Pembahasan
+Write a short 1–2 paragraph background explaining why the discussion was conducted.
+
+### Discussion Point
+1. ...
+2. ...
+3. ...
+
+Discussion Points should follow the logical flow of the actual meeting:
+background/problem → stakeholder clarification → technical/business constraints → options → agreement/remaining issue.
+
+### Kesepakatan
+Only include this section when explicit agreements or decisions exist.
+1. ...
+2. ...
+Do not create this section merely because a topic was discussed.
+
+### Action Plan
+| No. | Task | Person in Charge | Target |
+|---|---|---|---|
+| 1 | ... | ... | ... |
+
+Only create an action item when an actual follow-up activity exists in the meeting.
+If PIC or target is not available: use TBC.
+
+### Need Confirmation
+Only show this section when there are material ambiguities.
+- [CONFIRM: ...]
+- [CONFIRM: ...]
+Do not clutter this section with trivial transcription noise.""",
+            "custom": False,
+        },
+        {
+            "id": "cleanup",
+            "title": "Transcript Cleanup",
+            "description": "Clean noisy ASR transcripts while preserving the full discussion, speaker intent, technical details, and chronology.",
+            "prompt": """ROLE
+You are a transcript editor, NOT a meeting summarizer.
+
+GOAL
+Convert noisy/raw ASR meeting transcription into readable transcript form without removing substantive discussion.
+
+RULES
+- Preserve chronology.
+- Preserve arguments, objections, clarifications, decisions, and technical details.
+- Remove filler words only when they provide no meaning.
+- Remove duplicated ASR fragments.
+- Fix obvious ASR errors only when context makes the intended term highly reliable.
+- Preserve speaker attribution when reasonably identifiable.
+- If speaker identity is uncertain, use neutral labels such as:
+  "Tim DWS", "Tim Area", "Telkomsel", "TIF", "Speaker", etc.
+- Never invent speaker names.
+- Do NOT summarize.
+- Do NOT collapse long discussion into bullet-point conclusions.
+- Do NOT remove disagreement or unresolved discussion.
+- Do NOT turn proposals into decisions.
+- Preserve numbers exactly when reliable.
+- If a technical number is unclear, use:
+  [UNCLEAR: possible value ...]
+- Prefer terminology already established elsewhere in the transcript.
+- Normalize obvious technical ASR mistakes where confidence is high.
+
+Example:
+"new century / new centric" → "NeuCentrIX"
+"NJN / NGL" → "NGN"
+"DC PDB / DCPDD" → "DCPDB"
+Only perform these corrections when context supports them.
+
+OUTPUT:
+
+# Cleaned Transcript
+
+**[Speaker / Team]:**
+...
+
+**[Speaker / Team]:**
+...
+
+At the end add:
+
+## Transcription Notes
+Only list meaningful corrections or unresolved ambiguities, for example:
+- "new century" normalized to "NeuCentrIX" based on context.
+- [UNCLEAR] Power requirement sounded like either 2×200A or 3×200A.
+
+Do not add a meeting summary.""",
+            "custom": False,
+        },
+        {
+            "id": "exec",
+            "title": "Executive Summary",
+            "description": "High-level strategic briefing with key outcomes and essential decisions.",
+            "prompt": "Provide a high-level executive summary in Markdown format with key takeaways, strategic decisions, and overall meeting outcomes.",
+            "custom": False,
+        },
+        {
+            "id": "jira",
+            "title": "Action Items & Jira Tasks",
+            "description": "Extract explicit tasks into a structured table with assignees, deadlines, and Jira markup.",
+            "prompt": "Extract all action items, assignees, and deadlines into a clear Markdown table, followed by formatted Jira-ready task tickets.",
+            "custom": False,
+        },
+        {
+            "id": "retro",
+            "title": "Sprint Retrospective",
+            "description": "Categorize discussion into What Went Well, What Could Be Improved, and Next Action Points.",
+            "prompt": "Structure the meeting notes in Sprint Retrospective format: 1. What Went Well, 2. What Could Be Improved / Blockers, 3. Concrete Action Points for Next Sprint.",
+            "custom": False,
+        },
+        {
+            "id": "tech",
+            "title": "Technical Architecture Review",
+            "description": "Summarize engineering tradeoffs, system design choices, and architectural decisions.",
+            "prompt": "Summarize technical decisions, engineering constraints, database/API design choices, and system architecture specs discussed in the meeting.",
+            "custom": False,
+        },
     ]
     custom = await asyncio.to_thread(db.get_custom_presets)
     return {"presets": builtin + custom}
@@ -248,10 +424,10 @@ async def create_preset(req: CreatePresetRequest):
     prompt = req.prompt.strip()
     if not title or not prompt:
         raise HTTPException(status_code=400, detail="title and prompt are required")
-    if len(title) > 120:
-        raise HTTPException(status_code=400, detail="title must be 120 characters or fewer")
-    if len(prompt) > 2000:
-        raise HTTPException(status_code=400, detail="prompt must be 2000 characters or fewer")
+    if len(title) > 150:
+        raise HTTPException(status_code=400, detail="title must be 150 characters or fewer")
+    if len(prompt) > 10000:
+        raise HTTPException(status_code=400, detail="prompt must be 10000 characters or fewer")
     preset = await asyncio.to_thread(db.save_custom_preset, title, prompt)
     return {"preset": preset}
 
