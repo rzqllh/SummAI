@@ -260,7 +260,7 @@ export function PresetSelector({
 }: PresetSelectorProps) {
   const [selectedPresetId, setSelectedPresetId] = useState<string>("mom");
   const [presetList, setPresetList] = useState<PresetItem[]>(DEFAULT_BUILTIN_PRESETS);
-  const [rawCustomPrompt, setRawCustomPrompt] = useState<string>("");
+  const [rawCustomPrompt, setRawCustomPrompt] = useState<string>(customPrompt || "");
 
   // Optional Context Support (Section 4)
   const [showOptionalContext, setShowOptionalContext] = useState(false);

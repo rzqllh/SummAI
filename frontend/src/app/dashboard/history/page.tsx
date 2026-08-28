@@ -24,6 +24,8 @@ import {
   MeetingDetailDrawer,
   HistoryMeeting,
 } from "@/components/history/MeetingDetailDrawer";
+import { FolderManagerBar } from "@/components/history/FolderManagerBar";
+import { AnalyticsOverviewWidget } from "@/components/history/AnalyticsOverviewWidget";
 import { getApiBaseUrl } from "@/lib/api";
 
 interface ActionItem {
@@ -44,12 +46,14 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<HistoryMeeting | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Debounced meeting search with AbortController
+  // Debounced meeting search with AbortController, Folder, and Tag filters
   useEffect(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -59,12 +63,20 @@ export default function HistoryPage() {
 
     const timer = setTimeout(() => {
       setLoading(true);
+      const params: Record<string, string | number> = {
+        q: searchQuery,
+        type: selectedType === "all" ? "" : selectedType,
+      };
+      if (selectedFolderId !== null) {
+        params.folder_id = selectedFolderId;
+      }
+      if (selectedTagId !== null) {
+        params.tag_id = selectedTagId;
+      }
+
       axios
         .get(`${getApiBaseUrl()}/api/history`, {
-          params: {
-            q: searchQuery,
-            type: selectedType === "all" ? "" : selectedType,
-          },
+          params,
           signal: controller.signal,
         })
         .then((res) => {
@@ -84,7 +96,7 @@ export default function HistoryPage() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [searchQuery, selectedType]);
+  }, [searchQuery, selectedType, selectedFolderId, selectedTagId]);
 
   // Load Action Items
   const loadActionItems = () => {
@@ -97,10 +109,8 @@ export default function HistoryPage() {
   };
 
   useEffect(() => {
-    if (activeTab === "action_items") {
-      loadActionItems();
-    }
-  }, [activeTab]);
+    loadActionItems();
+  }, []);
 
   const toggleActionItemStatus = async (item: ActionItem) => {
     const nextStatus = item.status === "done" ? "open" : "done";
@@ -186,7 +196,7 @@ export default function HistoryPage() {
           <button
             type="button"
             onClick={() => setActiveTab("meetings")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
               activeTab === "meetings"
                 ? "bg-emerald-500 text-slate-950 font-bold"
                 : "text-slate-400 hover:text-white"
@@ -199,7 +209,7 @@ export default function HistoryPage() {
           <button
             type="button"
             onClick={() => setActiveTab("action_items")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
               activeTab === "action_items"
                 ? "bg-emerald-500 text-slate-950 font-bold"
                 : "text-slate-400 hover:text-white"
@@ -211,8 +221,19 @@ export default function HistoryPage() {
         </div>
       </div>
 
+      {/* Analytics Overview Cards */}
+      <AnalyticsOverviewWidget meetings={meetings} actionItems={actionItems} />
+
       {activeTab === "meetings" ? (
         <>
+          {/* Folders & Tags Workspace Bar */}
+          <FolderManagerBar
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={setSelectedFolderId}
+            selectedTagId={selectedTagId}
+            onSelectTag={setSelectedTagId}
+          />
+
           {/* Search & Filter Component */}
           <HistorySearchFilter
             searchQuery={searchQuery}
@@ -234,8 +255,8 @@ export default function HistoryPage() {
                   No meeting records found
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {searchQuery
-                    ? "Try adjusting your search terms or format filters."
+                  {searchQuery || selectedTagId !== null || selectedFolderId !== null
+                    ? "Try adjusting your search terms, folders, or tag filters."
                     : "Your SQLite meeting library is currently empty."}
                 </p>
               </div>
@@ -271,6 +292,30 @@ export default function HistoryPage() {
                     <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors line-clamp-1">
                       {meeting.filename || `Meeting #${meeting.id}`}
                     </h3>
+
+                    {/* Tags Chip List */}
+                    {meeting.tags && meeting.tags.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {meeting.tags.map((tag) => (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTagId(selectedTagId === tag.id ? null : tag.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border transition-opacity hover:opacity-80 cursor-pointer"
+                            style={{
+                              borderColor: `${tag.color || "#38bdf8"}40`,
+                              backgroundColor: `${tag.color || "#38bdf8"}15`,
+                              color: tag.color || "#38bdf8",
+                            }}
+                          >
+                            #{tag.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Snippet */}
                     <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">

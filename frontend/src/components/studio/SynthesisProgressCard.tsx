@@ -9,13 +9,15 @@ import {
   ShieldCheck,
   CheckCircle2,
   X,
-  Cpu,
+  Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SynthesisProgressCardProps {
   isSynthesizing: boolean;
   presetTitle?: string;
+  streamedSummary?: string;
+  providerUsed?: string;
   onCancel?: () => void;
 }
 
@@ -36,18 +38,15 @@ const ROTATING_TIPS = [
 export function SynthesisProgressCard({
   isSynthesizing,
   presetTitle = "Corporate MoM",
+  streamedSummary = "",
+  providerUsed = "Google Gemini Flash",
   onCancel,
 }: SynthesisProgressCardProps) {
   const [elapsed, setElapsed] = useState(0);
-  const [phaseIndex, setPhaseIndex] = useState(0);
-  const [progress, setProgress] = useState(15);
   const [tipIndex, setTipIndex] = useState(0);
 
   useEffect(() => {
     if (!isSynthesizing) {
-      setElapsed(0);
-      setPhaseIndex(0);
-      setProgress(15);
       return;
     }
 
@@ -65,23 +64,8 @@ export function SynthesisProgressCard({
     };
   }, [isSynthesizing]);
 
-  useEffect(() => {
-    if (!isSynthesizing) return;
-
-    if (elapsed < 2) {
-      setPhaseIndex(0);
-      setProgress(25);
-    } else if (elapsed < 5) {
-      setPhaseIndex(1);
-      setProgress(55);
-    } else if (elapsed < 8) {
-      setPhaseIndex(2);
-      setProgress(80);
-    } else {
-      setPhaseIndex(3);
-      setProgress(94);
-    }
-  }, [elapsed, isSynthesizing]);
+  const phaseIndex = streamedSummary.length > 300 ? 3 : streamedSummary.length > 100 ? 2 : elapsed < 3 ? 0 : 1;
+  const progress = streamedSummary.length > 500 ? 95 : streamedSummary.length > 200 ? 80 : elapsed < 3 ? 30 : 60;
 
   const formatElapsed = (s: number) => {
     const mins = Math.floor(s / 60);
@@ -90,7 +74,7 @@ export function SynthesisProgressCard({
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-emerald-500/30 bg-slate-950/80 shadow-2xl shadow-emerald-500/10 space-y-6 animate-in fade-in duration-300">
+    <div className="glass-card rounded-2xl p-6 border border-emerald-500/30 bg-slate-950/80 shadow-2xl shadow-emerald-500/10 space-y-5 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
         <div className="flex items-center gap-3">
@@ -103,7 +87,7 @@ export function SynthesisProgressCard({
                 Synthesizing Intelligence
               </h3>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold">
-                Live
+                Live SSE Stream
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -146,6 +130,23 @@ export function SynthesisProgressCard({
         </div>
       </div>
 
+      {/* Live Stream Terminal Box (if tokens arriving) */}
+      {streamedSummary && (
+        <div className="rounded-xl bg-slate-950 border border-slate-800/90 p-4 space-y-2 max-h-48 overflow-y-auto font-mono text-xs text-slate-300 leading-relaxed shadow-inner">
+          <div className="flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-800/60 pb-1.5 font-sans">
+            <span className="flex items-center gap-1.5 text-emerald-400 font-mono font-semibold">
+              <Terminal className="w-3.5 h-3.5" />
+              Real-Time Inference Delta
+            </span>
+            <span>{streamedSummary.length} chars</span>
+          </div>
+          <p className="whitespace-pre-wrap">
+            {streamedSummary}
+            <span className="inline-block w-2 h-3.5 bg-emerald-400 ml-1 animate-pulse" />
+          </p>
+        </div>
+      )}
+
       {/* Multi-Step Pipeline Visualizer */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
         {PHASES.map((p, idx) => {
@@ -177,7 +178,7 @@ export function SynthesisProgressCard({
       </div>
 
       {/* Live Stats Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-800/80 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80 text-xs">
         <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-800/80 flex items-center justify-between">
           <span className="text-slate-400 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-emerald-400" />
@@ -191,7 +192,7 @@ export function SynthesisProgressCard({
             <Bot className="w-3.5 h-3.5 text-cyan-400" />
             Inference
           </span>
-          <span className="font-semibold text-slate-200 truncate ml-2">Google Gemini Flash</span>
+          <span className="font-semibold text-slate-200 truncate ml-2">{providerUsed}</span>
         </div>
 
         <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-800/80 flex items-center justify-between">

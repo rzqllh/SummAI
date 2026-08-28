@@ -10,7 +10,6 @@ import {
   X,
   Globe,
   RefreshCw,
-  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api";

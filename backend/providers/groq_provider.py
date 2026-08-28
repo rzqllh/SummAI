@@ -10,6 +10,8 @@ from backend.providers.base import (
     ProviderRateLimitError,
     ProviderUnavailableError,
     ProviderError,
+    TranscriptionResult,
+    TranscriptSegment,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,10 @@ class GroqSTTProvider(BaseSTTProvider):
         return "Groq Whisper (Large-v3)"
 
     async def transcribe(self, audio_file_path: str, api_key: Optional[str] = None, language: Optional[str] = None) -> str:
+        res = await self.transcribe_structured(audio_file_path, api_key=api_key, language=language)
+        return res.text
+
+    async def transcribe_structured(self, audio_file_path: str, api_key: Optional[str] = None, language: Optional[str] = None) -> TranscriptionResult:
         key = api_key or os.environ.get("GROQ_API_KEY")
         if not key or not key.strip():
             raise ProviderAuthError("GROQ_API_KEY is not configured.", provider_name=self.name)
@@ -30,13 +36,50 @@ class GroqSTTProvider(BaseSTTProvider):
                 kwargs = {
                     "file": (os.path.basename(audio_file_path), f.read()),
                     "model": "whisper-large-v3",
-                    "response_format": "text",
+                    "response_format": "verbose_json",
                 }
                 if language:
                     kwargs["language"] = language
                 
-                transcription = client.audio.transcriptions.create(**kwargs)
-            return str(transcription)
+                response = client.audio.transcriptions.create(**kwargs)
+            
+            raw_text = getattr(response, "text", str(response)).strip()
+            raw_segments = getattr(response, "segments", []) or []
+            
+            segments = []
+            for idx, s in enumerate(raw_segments):
+                seg_dict = s if isinstance(s, dict) else (getattr(s, "__dict__", {}) or {})
+                start = float(seg_dict.get("start", 0.0) or 0.0)
+                end = float(seg_dict.get("end", 0.0) or 0.0)
+                txt = str(seg_dict.get("text", "")).strip()
+                speaker = seg_dict.get("speaker") or f"Speaker {1 + (idx % 2)}"
+                if txt:
+                    segments.append(TranscriptSegment(
+                        id=idx + 1,
+                        start=start,
+                        end=end,
+                        text=txt,
+                        speaker=speaker,
+                    ))
+            
+            if not segments and raw_text:
+                segments.append(TranscriptSegment(
+                    id=1,
+                    start=0.0,
+                    end=0.0,
+                    text=raw_text,
+                    speaker="Speaker 1",
+                ))
+
+            duration = getattr(response, "duration", 0.0) or (segments[-1].end if segments else 0.0)
+            lang = getattr(response, "language", language or "en")
+
+            return TranscriptionResult(
+                text=raw_text,
+                segments=segments,
+                duration=float(duration or 0.0),
+                language=str(lang),
+            )
         except AuthenticationError as e:
             logger.warning(f"[{self.name}] Auth error: {e}")
             raise ProviderAuthError(str(e), provider_name=self.name)
@@ -122,6 +165,55 @@ class GroqLLMProvider(BaseLLMProvider):
         if last_error:
             raise ProviderError(f"Groq LLM failed across all candidate models: {last_error}", provider_name=self.name)
         raise ProviderError("Groq returned empty response", provider_name=self.name)
+
+    async def generate_stream(self, prompt: str, api_key: Optional[str] = None, temperature: float = 0.2):
+        key = api_key or os.environ.get("GROQ_API_KEY")
+        if not key or not key.strip():
+            raise ProviderAuthError("GROQ_API_KEY is not configured.", provider_name=self.name)
+
+        client = Groq(api_key=key.strip())
+        candidate_models = [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-specdec",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+        ]
+        last_error = None
+
+        for model_id in candidate_models:
+            try:
+                logger.info(f"[Groq LLM Stream] Streaming generation with {model_id}...")
+                stream = client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a professional meeting minutes and executive intelligence assistant. Output high-fidelity structured Markdown.",
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt,
+                        },
+                    ],
+                    model=model_id,
+                    temperature=temperature,
+                    stream=True,
+                )
+                emitted_any = False
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        emitted_any = True
+                        yield chunk.choices[0].delta.content
+                if emitted_any:
+                    return
+            except AuthenticationError as e:
+                raise ProviderAuthError(str(e), provider_name=self.name)
+            except Exception as e:
+                last_error = e
+                continue
+
+        if last_error:
+            raise ProviderError(f"Groq LLM streaming failed across all models: {last_error}", provider_name=self.name)
 
     async def test_connection(self, api_key: Optional[str] = None) -> Dict[str, Any]:
         key = api_key or os.environ.get("GROQ_API_KEY")

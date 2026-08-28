@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 import {
-  MessageSquare,
   Send,
   Sparkles,
   Bot,
@@ -11,23 +10,35 @@ import {
   X,
   RefreshCw,
   HelpCircle,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api";
+
+export interface TranscriptSegmentData {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  speaker?: string;
+}
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  evidence?: TranscriptSegmentData[];
 }
 
 interface MeetingChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   rawTranscript: string;
-  summary: string;
+  summary?: string;
   meetingTitle?: string;
+  segments?: TranscriptSegmentData[];
+  onSeekAudio?: (timeSeconds: number) => void;
 }
 
 const QUICK_QUESTIONS = [
@@ -43,10 +54,13 @@ export function MeetingChatDrawer({
   rawTranscript,
   summary,
   meetingTitle,
+  segments,
+  onSeekAudio,
 }: MeetingChatDrawerProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const msgCounter = useRef(0);
 
   if (!isOpen) return null;
 
@@ -54,11 +68,12 @@ export function MeetingChatDrawer({
     const q = (questionText || input).trim();
     if (!q || isLoading) return;
 
+    msgCounter.current += 1;
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: `user-${msgCounter.current}`,
       role: "user",
       content: q,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: "Just now",
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -70,25 +85,29 @@ export function MeetingChatDrawer({
         raw_transcript: rawTranscript,
         summary: summary,
         question: q,
+        segments: segments || [],
       });
 
+      msgCounter.current += 1;
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `ai-${msgCounter.current}`,
         role: "assistant",
         content: res.data.answer || "No response received.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: "Just now",
+        evidence: res.data.evidence || [],
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (err: unknown) {
-      const errorText = axios.isAxiosError(err) && err.response?.data?.detail
-        ? String(err.response.data.detail)
+      const errorText = axios.isAxiosError(err) && err.response?.data?.error?.message
+        ? String(err.response.data.error.message)
         : "Failed to get an answer. Please try again.";
 
+      msgCounter.current += 1;
       const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `err-${msgCounter.current}`,
         role: "assistant",
         content: `⚠️ ${errorText}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: "Just now",
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -178,13 +197,39 @@ export function MeetingChatDrawer({
                   </div>
                 )}
                 <div
-                  className={`max-w-[85%] rounded-2xl p-3.5 leading-relaxed space-y-1 ${
+                  className={`max-w-[85%] rounded-2xl p-3.5 leading-relaxed space-y-1.5 ${
                     m.role === "user"
                       ? "bg-emerald-500 text-slate-950 font-medium"
                       : "bg-slate-950 border border-slate-800 text-slate-200"
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{m.content}</p>
+
+                  {m.evidence && m.evidence.length > 0 && (
+                    <div className="pt-2 mt-2 border-t border-slate-800/80 space-y-1.5">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                        Evidence Citations:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {m.evidence.map((ev) => (
+                          <button
+                            key={ev.id}
+                            type="button"
+                            onClick={() => onSeekAudio?.(ev.start)}
+                            className="px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 hover:border-emerald-500/50 text-[11px] text-emerald-300 font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title={`Jump to ${Math.floor(ev.start / 60)}:${Math.floor(ev.start % 60).toString().padStart(2, '0')}: "${ev.text}"`}
+                          >
+                            <Clock className="w-3 h-3 text-emerald-400" />
+                            <span>
+                              {Math.floor(ev.start / 60)}:{(Math.floor(ev.start % 60)).toString().padStart(2, "0")}
+                            </span>
+                            {ev.speaker && <span className="text-slate-400">({ev.speaker})</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <span
                     className={`block text-[10px] text-right font-mono ${
                       m.role === "user" ? "text-slate-900/70" : "text-slate-500"

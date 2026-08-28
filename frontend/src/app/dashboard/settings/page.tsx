@@ -22,6 +22,8 @@ import {
   Plus,
   Trash2,
   X,
+  Download,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getApiBaseUrl } from "@/lib/api";
@@ -770,6 +772,34 @@ export default function SettingsPage() {
               )}
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Workspace Data Backup & Export */}
+      <div className="glass-card rounded-2xl p-4 sm:p-6 border border-slate-800/80 bg-slate-950/60 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-base font-bold text-white tracking-tight">
+              Workspace Data Backup & Portability
+            </h2>
+          </div>
+          <span className="text-xs font-mono text-emerald-400">100% Local SQLite</span>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Export your entire local workspace database — including all synthesized meetings, custom prompt presets, project folders, tags, and action items — as a single portable JSON archive.
+        </p>
+
+        <div className="pt-1">
+          <a
+            href={`${getApiBaseUrl()}/api/account/export`}
+            download
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export Complete Workspace (.json)</span>
+          </a>
         </div>
       </div>
     </div>

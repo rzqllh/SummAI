@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Sparkles,
-  ArrowRight,
   Zap,
   Play,
   Copy,

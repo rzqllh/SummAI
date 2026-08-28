@@ -120,6 +120,56 @@ class CloudflareLLMProvider(BaseLLMProvider):
         except Exception as e:
             raise ProviderError(f"Cloudflare LLM request failed: {e}", provider_name=self.name)
 
+    async def generate_stream(self, prompt: str, api_key: Optional[str] = None, temperature: float = 0.2):
+        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+
+        if not account_id or not api_token:
+            raise ProviderAuthError("Cloudflare Account ID or API Token is not configured.", provider_name=self.name)
+
+        url = f"{CF_API_BASE}/{account_id}/ai/run/@cf/meta/llama-3.3-70b-instruct"
+        headers = {
+            "Authorization": f"Bearer {api_token.strip()}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a professional meeting intelligence secretary. Format clean, high-value Markdown summaries.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            "temperature": temperature,
+            "stream": True,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream("POST", url, headers=headers, json=payload) as response:
+                    if response.status_code != 200:
+                        err_body = await response.aread()
+                        raise ProviderError(f"Cloudflare stream returned {response.status_code}: {err_body.decode('utf-8', errors='ignore')}", provider_name=self.name)
+
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            raw_data = line[6:].strip()
+                            if raw_data == "[DONE]":
+                                break
+                            try:
+                                import json
+                                parsed = json.loads(raw_data)
+                                text = parsed.get("response", "")
+                                if text:
+                                    yield text
+                            except Exception:
+                                pass
+        except Exception as e:
+            raise ProviderError(f"Cloudflare streaming error: {e}", provider_name=self.name)
+
     async def test_connection(self, api_key: Optional[str] = None) -> Dict[str, Any]:
         account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
         api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")

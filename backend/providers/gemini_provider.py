@@ -77,6 +77,52 @@ class GeminiLLMProvider(BaseLLMProvider):
             raise ProviderError(f"Gemini generation failed on all candidate models: {last_error}", provider_name=self.name)
         raise ProviderError("Gemini returned empty response", provider_name=self.name)
 
+    async def generate_stream(self, prompt: str, api_key: Optional[str] = None, temperature: float = 0.2):
+        key = api_key or os.environ.get("GEMINI_API_KEY")
+        if not key or not key.strip():
+            raise ProviderAuthError("GEMINI_API_KEY is not configured.", provider_name=self.name)
+
+        client = genai.Client(api_key=key.strip())
+        candidate_models = [
+            "gemini-3.5-flash",
+            "gemini-3.7-flash",
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash-lite",
+        ]
+        last_error = None
+
+        for model_id in candidate_models:
+            try:
+                logger.info(f"[Gemini Stream] Streaming generation with {model_id}...")
+                response_stream = await client.aio.models.generate_content_stream(
+                    model=model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                    ),
+                )
+                emitted_any = False
+                async for chunk in response_stream:
+                    if chunk.text:
+                        emitted_any = True
+                        yield chunk.text
+                if emitted_any:
+                    return
+            except errors.ClientError as e:
+                msg = str(e)
+                code = getattr(e, "code", None)
+                if code == 401 or "API_KEY_INVALID" in msg or "PERMISSION_DENIED" in msg:
+                    raise ProviderAuthError(msg, provider_name=self.name, status_code=401)
+                last_error = e
+                continue
+            except Exception as e:
+                last_error = e
+                continue
+
+        if last_error:
+            raise ProviderError(f"Gemini streaming failed on all models: {last_error}", provider_name=self.name)
+
     async def test_connection(self, api_key: Optional[str] = None) -> Dict[str, Any]:
         key = api_key or os.environ.get("GEMINI_API_KEY")
         if not key or not key.strip():

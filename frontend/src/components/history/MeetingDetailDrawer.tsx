@@ -27,6 +27,13 @@ export interface HistoryMeeting {
   raw_transcript: string;
   summary: string;
   created_at: string;
+  title?: string;
+  duration_seconds?: number;
+  provider_stt?: string;
+  provider_llm?: string;
+  folder_id?: number | null;
+  segments_json?: string;
+  tags?: Array<{ id: number; name: string; color: string }>;
 }
 
 interface MeetingDetailDrawerProps {

@@ -15,6 +15,13 @@ export interface ChunkUploadResult {
   media_type: string;
   provider_used: string;
   fallback_applied: boolean;
+  segments?: Array<{
+    id: number;
+    start: number;
+    end: number;
+    text: string;
+    speaker?: string;
+  }>;
 }
 
 export async function uploadFileInChunks({

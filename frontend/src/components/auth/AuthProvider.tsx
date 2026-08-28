@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { AuthModal } from "./AuthModal";
 
 interface AuthUser {
@@ -33,26 +33,24 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser>(DEFAULT_USER);
-  const [isClient, setIsClient] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
+  const [user, setUser] = useState<AuthUser>(() => {
     if (typeof window !== "undefined") {
-      const savedEmail = localStorage.getItem("SUMMAI_USER_EMAIL");
-      const savedName = localStorage.getItem("SUMMAI_USER_NAME");
-      const savedImage = localStorage.getItem("SUMMAI_USER_IMAGE");
-
-      if (savedEmail && savedEmail.trim()) {
-        setUser({
-          email: savedEmail.trim().toLowerCase(),
-          name: savedName || (savedEmail === "default" ? "Personal Workspace" : savedEmail.split("@")[0]),
-          image: savedImage || undefined,
-        });
-      }
+      try {
+        const savedEmail = localStorage.getItem("SUMMAI_USER_EMAIL");
+        const savedName = localStorage.getItem("SUMMAI_USER_NAME");
+        const savedImage = localStorage.getItem("SUMMAI_USER_IMAGE");
+        if (savedEmail && savedEmail.trim()) {
+          return {
+            email: savedEmail.trim().toLowerCase(),
+            name: savedName || (savedEmail === "default" ? "Personal Workspace" : savedEmail.split("@")[0]),
+            image: savedImage || undefined,
+          };
+        }
+      } catch {}
     }
-  }, []);
+    return DEFAULT_USER;
+  });
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleSetUserWorkspace = (email: string, name?: string) => {
     const cleanEmail = (email || "default").trim().toLowerCase();
@@ -80,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isLoggedIn = isClient && user.email !== "default";
+  const isLoggedIn = user.email !== "default";
 
   return (
     <AuthContext.Provider

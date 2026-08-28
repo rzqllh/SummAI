@@ -9,17 +9,22 @@ import {
   RotateCcw,
   FileText,
   FileCode,
-  MessageSquare,
   Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { exportToPdf, exportToDocx } from "@/lib/exportUtils";
-import { MeetingChatDrawer } from "./MeetingChatDrawer";
+import { MeetingChatDrawer, TranscriptSegmentData } from "./MeetingChatDrawer";
+import { AudioPlayerWidget } from "./AudioPlayerWidget";
+import { WebhookDispatchModal } from "./WebhookDispatchModal";
+import { Send } from "lucide-react";
 
 interface SummaryExporterProps {
   summary: string;
   rawTranscript?: string;
   filename: string;
+  audioFile?: File | null;
+  audioUrl?: string | null;
+  segments?: TranscriptSegmentData[];
   onReset: () => void;
 }
 
@@ -27,10 +32,15 @@ export function SummaryExporter({
   summary,
   rawTranscript = "",
   filename,
+  audioFile,
+  audioUrl,
+  segments,
   onReset,
 }: SummaryExporterProps) {
   const [copyState, setCopyState] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isWebhookOpen, setIsWebhookOpen] = useState(false);
+  const [seekTime, setSeekTime] = useState<number | undefined>(undefined);
 
   const handleCopy = (type: "md" | "text") => {
     let textToCopy = summary;
@@ -127,6 +137,17 @@ export function SummaryExporter({
             <span>Export PDF</span>
           </Button>
 
+          {/* Send to Slack / Notion */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsWebhookOpen(true)}
+            className="border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs h-9 px-3 rounded-xl flex items-center gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Slack / Notion</span>
+          </Button>
+
           {/* Download .md */}
           <Button
             variant="outline"
@@ -139,6 +160,18 @@ export function SummaryExporter({
           </Button>
         </div>
       </div>
+
+      {/* Audio Waveform Player (if audio source available) */}
+      {(audioFile || audioUrl) && (
+        <div className="pt-1">
+          <AudioPlayerWidget
+            audioFile={audioFile}
+            audioUrl={audioUrl}
+            filename={filename}
+            seekTime={seekTime}
+          />
+        </div>
+      )}
 
       {/* Rendered Summary Box */}
       <div className="p-6 rounded-xl bg-slate-950/80 border border-slate-800/90 max-h-[550px] overflow-y-auto">
@@ -167,6 +200,16 @@ export function SummaryExporter({
         rawTranscript={rawTranscript || summary}
         summary={summary}
         meetingTitle={filename}
+        segments={segments}
+        onSeekAudio={(t) => setSeekTime(t)}
+      />
+
+      {/* Slack / Notion Dispatch Modal */}
+      <WebhookDispatchModal
+        isOpen={isWebhookOpen}
+        onClose={() => setIsWebhookOpen(false)}
+        title={filename}
+        summary={summary}
       />
     </div>
   );

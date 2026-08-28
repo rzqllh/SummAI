@@ -11,7 +11,6 @@ import {
   Sparkles,
   Zap,
   Cloud,
-  RotateCcw,
   FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,7 @@ import { RecentJobsWidget } from "@/components/studio/RecentJobsWidget";
 import { ActiveJobCard } from "@/components/studio/ActiveJobCard";
 import { AudioPlayerWidget } from "@/components/studio/AudioPlayerWidget";
 import { MicrophoneRecorder } from "@/components/studio/MicrophoneRecorder";
+import { BatchProcessingModal } from "@/components/studio/BatchProcessingModal";
 import { uploadFileInChunks } from "@/lib/chunkUpload";
 import { saveStudioDraft, getStudioDraft, clearStudioDraft, StudioDraft } from "@/lib/draftStorage";
 import { getApiBaseUrl } from "@/lib/api";
@@ -33,12 +33,16 @@ export default function SummarizerStudioPage() {
   const [currentStep, setCurrentStep] = useState<StudioStep>(1);
   const [maxReachedStep, setMaxReachedStep] = useState<StudioStep>(1);
 
+  // Batch upload state
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+
   // File upload & metadata state
   const [file, setFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
   const [title, setTitle] = useState("");
   const [filesize, setFilesize] = useState("");
-  const [duration, setDuration] = useState("00:15:00");
+  const duration = "00:15:00";
   const [mediaType, setMediaType] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -46,11 +50,15 @@ export default function SummarizerStudioPage() {
 
   // Studio payload state
   const [transcript, setTranscript] = useState("");
+  const [segments, setSegments] = useState<Array<{ id: number; start: number; end: number; text: string; speaker?: string }>>([]);
   const [customPrompt, setCustomPrompt] = useState("");
   const [summary, setSummary] = useState("");
+  const [streamedText, setStreamedText] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(null);
+  const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(() => {
+    return getStudioDraft();
+  });
 
   // Provider tracking state
   const [sttProvider, setSttProvider] = useState("");
@@ -60,14 +68,6 @@ export default function SummarizerStudioPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Check for unsaved draft on load
-  useEffect(() => {
-    const draft = getStudioDraft();
-    if (draft && draft.transcript && !transcript) {
-      setRecoveredDraft(draft);
-    }
-  }, []);
 
   // Autosave draft on edit
   useEffect(() => {
@@ -125,6 +125,7 @@ export default function SummarizerStudioPage() {
       });
 
       setTranscript(res.transcript || "");
+      setSegments(res.segments || []);
       setSttProvider(res.provider_used || "Groq Whisper Large-v3");
       setSttFallback(res.fallback_applied || false);
       setUploadProgress(100);
@@ -180,18 +181,70 @@ export default function SummarizerStudioPage() {
         }
       } catch {}
 
-      // 2. Synthesize Meeting Notes
-      const res = await axios.post(`${getApiBaseUrl()}/api/summarize`, {
-        raw_transcript: transcript,
-        filename: filename || "Pasted-Transcript.txt",
-        title: autoTitle,
-        media_type: mediaType || "txt",
-        custom_prompt: promptToSend || null,
+      // 2. Synthesize Meeting Notes with live SSE Token Streaming
+      setStreamedText("");
+      const savedGemini = typeof window !== "undefined" ? localStorage.getItem("SUMMAI_GEMINI_KEY") || "" : "";
+      const savedGroq = typeof window !== "undefined" ? localStorage.getItem("SUMMAI_GROQ_KEY") || "" : "";
+      const savedCf = typeof window !== "undefined" ? localStorage.getItem("SUMMAI_CF_TOKEN") || "" : "";
+
+      const response = await fetch(`${getApiBaseUrl()}/api/synthesis/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(savedGemini ? { "x-gemini-api-key": savedGemini } : {}),
+          ...(savedGroq ? { "x-groq-api-key": savedGroq } : {}),
+          ...(savedCf ? { "x-cf-api-token": savedCf } : {}),
+        },
+        body: JSON.stringify({
+          raw_transcript: transcript,
+          filename: filename || "Pasted-Transcript.txt",
+          title: autoTitle,
+          media_type: mediaType || "txt",
+          custom_prompt: promptToSend || null,
+          segments: segments.length > 0 ? segments : null,
+        }),
       });
 
-      setSummary(res.data.summary);
-      setLlmProvider(res.data.provider_used || "Google Gemini Flash");
-      setLlmFallback(res.data.fallback_applied || false);
+      if (!response.ok || !response.body) {
+        throw new Error(`Synthesis HTTP error: ${response.statusText || response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulated = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.delta) {
+                accumulated += data.delta;
+                setStreamedText(accumulated);
+              }
+              if (data.provider) {
+                setLlmProvider(data.provider);
+                if (data.fallback) setLlmFallback(true);
+              }
+              if (data.summary) {
+                accumulated = data.summary;
+                setSummary(data.summary);
+              }
+            } catch {}
+          }
+        }
+      }
+
+      setSummary(accumulated);
       clearStudioDraft();
 
       setTimeout(() => {
@@ -201,10 +254,8 @@ export default function SummarizerStudioPage() {
       }, 300);
     } catch (err: unknown) {
       setIsSummarizing(false);
-      const axiosErr = err as AxiosError<{ detail?: string }>;
       const msg =
-        axiosErr.response?.data?.detail ||
-        axiosErr.message ||
+        (err as Error).message ||
         "Synthesis failed. Please verify your API Key in Settings.";
       setErrorMessage(msg);
     }
@@ -219,6 +270,7 @@ export default function SummarizerStudioPage() {
     setTitle("");
     setFilesize("");
     setTranscript("");
+    setSegments([]);
     setCustomPrompt("");
     setSummary("");
     setErrorMessage("");
@@ -333,7 +385,10 @@ export default function SummarizerStudioPage() {
                 onDrop={(e) => {
                   e.preventDefault();
                   setIsDragging(false);
-                  if (e.dataTransfer.files?.[0]) {
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
+                    setBatchFiles(Array.from(e.dataTransfer.files));
+                    setIsBatchModalOpen(true);
+                  } else if (e.dataTransfer.files?.[0]) {
                     void handleFileUpload(e.dataTransfer.files[0]);
                   }
                 }}
@@ -345,9 +400,13 @@ export default function SummarizerStudioPage() {
               >
                 <input
                   type="file"
+                  multiple
                   ref={fileInputRef}
                   onChange={(e) => {
-                    if (e.target.files?.[0]) {
+                    if (e.target.files && e.target.files.length > 1) {
+                      setBatchFiles(Array.from(e.target.files));
+                      setIsBatchModalOpen(true);
+                    } else if (e.target.files?.[0]) {
                       void handleFileUpload(e.target.files[0]);
                     }
                   }}
@@ -448,6 +507,8 @@ export default function SummarizerStudioPage() {
           <SynthesisProgressCard
             isSynthesizing={isSummarizing}
             presetTitle={customPrompt ? "Selected Preset" : "Corporate MoM"}
+            streamedSummary={streamedText}
+            providerUsed={llmProvider || "Google Gemini Flash"}
           />
         ) : (
           <PresetSelector
@@ -479,10 +540,19 @@ export default function SummarizerStudioPage() {
             summary={summary}
             rawTranscript={transcript}
             filename={title || filename}
+            audioFile={file}
+            segments={segments}
             onReset={handleReset}
           />
         </div>
       )}
+
+      {/* Batch Upload Modal */}
+      <BatchProcessingModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        files={batchFiles}
+      />
     </div>
   );
 }

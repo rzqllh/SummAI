@@ -1,177 +1,136 @@
 import sqlite3
-from datetime import datetime
 import os
 import json
 import hashlib
 import secrets
-from typing import Optional, List, Dict, Any
+import time
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Any
+from backend.migration_runner import run_migrations
 
-# Deterministic absolute path to meetings.db in root project directory
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_NAME = os.path.join(BASE_DIR, "meetings.db")
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "meetings.db"))
 
-def get_connection():
-    conn = sqlite3.connect(DB_NAME)
-    # Enable Write-Ahead Logging for better concurrent read/write performance
-    conn.execute("PRAGMA journal_mode=WAL;")
+def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
+    target_path = db_path or DB_PATH
+    conn = sqlite3.connect(target_path)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.execute("PRAGMA journal_mode = WAL;")
     return conn
 
-def _migrate_columns(conn: sqlite3.Connection):
-    cursor = conn.cursor()
-    # Check meetings table columns
-    cursor.execute("PRAGMA table_info(meetings)")
-    meetings_cols = [col[1] for col in cursor.fetchall()]
-    
-    new_cols = [
-        ("title", "TEXT DEFAULT NULL"),
-        ("duration_seconds", "REAL DEFAULT 0"),
-        ("provider_stt", "TEXT DEFAULT NULL"),
-        ("provider_llm", "TEXT DEFAULT NULL"),
-        ("segments_json", "TEXT DEFAULT '[]'"),
-        ("speakers_json", "TEXT DEFAULT '[]'"),
-        ("action_items_json", "TEXT DEFAULT '[]'"),
-        ("status", "TEXT DEFAULT 'completed'"),
-        ("folder_id", "INTEGER DEFAULT NULL"),
-        ("processing_status", "TEXT DEFAULT 'completed'"),
-        ("processing_error", "TEXT DEFAULT NULL"),
-        ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
-        ("user_email", "TEXT DEFAULT 'default'"),
-    ]
-    for col_name, col_def in new_cols:
-        if col_name not in meetings_cols:
-            cursor.execute(f"ALTER TABLE meetings ADD COLUMN {col_name} {col_def}")
+def init_db(db_path: Optional[str] = None):
+    target_path = db_path or DB_PATH
+    run_migrations(target_path)
+    with get_connection(target_path) as conn:
+        try:
+            conn.execute("ALTER TABLE tags ADD COLUMN color TEXT DEFAULT '#38bdf8';")
+        except Exception:
+            pass
 
-    # Check custom_presets table columns
-    cursor.execute("PRAGMA table_info(custom_presets)")
-    preset_cols = [col[1] for col in cursor.fetchall()]
-    if "user_email" not in preset_cols:
-        cursor.execute("ALTER TABLE custom_presets ADD COLUMN user_email TEXT DEFAULT 'default'")
+# --- PASSWORD HASHING (PBKDF2-HMAC-SHA256 with Salt) ---
 
-def init_db():
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        
-        # Schema Version Tracking
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS schema_version (
-                version INTEGER PRIMARY KEY,
-                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Meetings Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS meetings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename TEXT,
-                title TEXT,
-                media_type TEXT,
-                raw_transcript TEXT,
-                summary TEXT,
-                duration_seconds REAL DEFAULT 0,
-                provider_stt TEXT,
-                provider_llm TEXT,
-                segments_json TEXT DEFAULT '[]',
-                speakers_json TEXT DEFAULT '[]',
-                action_items_json TEXT DEFAULT '[]',
-                status TEXT DEFAULT 'completed',
-                folder_id INTEGER DEFAULT NULL,
-                processing_status TEXT DEFAULT 'completed',
-                processing_error TEXT DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default'
-            )
-        ''')
-        
-        # Presets Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS custom_presets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default'
-            )
-        ''')
-        
-        # Folders Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS folders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                color TEXT DEFAULT '#10b981',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default'
-            )
-        ''')
-        
-        # Tags Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default',
-                UNIQUE(name, user_email)
-            )
-        ''')
-        
-        # Meeting Tags Relation
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS meeting_tags (
-                meeting_id INTEGER,
-                tag_id INTEGER,
-                PRIMARY KEY (meeting_id, tag_id),
-                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Action Items Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS action_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                meeting_id INTEGER,
-                task TEXT NOT NULL,
-                owner TEXT DEFAULT NULL,
-                target_date TEXT DEFAULT NULL,
-                status TEXT DEFAULT 'open',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default',
-                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Share Links Table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS share_links (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                meeting_id INTEGER NOT NULL,
-                token_hash TEXT NOT NULL UNIQUE,
-                password_hash TEXT DEFAULT NULL,
-                allow_transcript INTEGER DEFAULT 1,
-                expires_at TIMESTAMP DEFAULT NULL,
-                revoked_at TIMESTAMP DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                user_email TEXT DEFAULT 'default',
-                FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        _migrate_columns(conn)
-        
-        # Performance Indexes
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_meetings_user_created ON meetings(user_email, created_at DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_meetings_user_folder ON meetings(user_email, folder_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_custom_presets_user ON custom_presets(user_email)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_action_items_user_status ON action_items(user_email, status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token_hash)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_email)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_user ON tags(user_email)")
-        
-        conn.commit()
+def hash_password(password: str) -> tuple[str, str]:
+    """Generates a secure PBKDF2-HMAC-SHA256 hash and 16-byte hex salt."""
+    salt = secrets.token_hex(16)
+    pw_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        600_000
+    ).hex()
+    return pw_hash, salt
+
+def verify_password(password: str, pw_hash: str, salt: str) -> bool:
+    """Verifies a password against a stored PBKDF2 hash using constant-time comparison."""
+    if not password or not pw_hash or not salt:
+        return False
+    computed_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        600_000
+    ).hex()
+    return secrets.compare_digest(computed_hash, pw_hash)
+
+# --- PERSISTENT CHUNK UPLOAD SESSIONS ---
+
+def create_upload_session(
+    upload_id: str,
+    filename: str,
+    filesize: int,
+    media_type: str,
+    total_chunks: int,
+    job_dir: str,
+    user_email: str = "default",
+    db_path: Optional[str] = None
+) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        conn.execute("""
+            INSERT INTO upload_sessions (id, user_email, filename, filesize, media_type, total_chunks, received_chunks, job_dir, status)
+            VALUES (?, ?, ?, ?, ?, ?, '[]', ?, 'uploading');
+        """, (upload_id, user_email, filename, filesize, media_type, total_chunks, job_dir))
+        return {
+            "upload_id": upload_id,
+            "filename": filename,
+            "filesize": filesize,
+            "total_chunks": total_chunks,
+            "received_chunks": [],
+            "status": "uploading"
+        }
+
+def get_upload_session(upload_id: str, user_email: Optional[str] = None, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        if user_email and user_email != "default":
+            cursor = conn.execute("SELECT * FROM upload_sessions WHERE id = ? AND user_email = ?;", (upload_id, user_email))
+        else:
+            cursor = conn.execute("SELECT * FROM upload_sessions WHERE id = ?;", (upload_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "user_email": row["user_email"],
+            "filename": row["filename"],
+            "filesize": row["filesize"],
+            "media_type": row["media_type"],
+            "total_chunks": row["total_chunks"],
+            "received_chunks": json.loads(row["received_chunks"] or "[]"),
+            "job_dir": row["job_dir"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+def add_received_chunk(upload_id: str, chunk_index: int, db_path: Optional[str] = None) -> List[int]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("SELECT received_chunks FROM upload_sessions WHERE id = ?;", (upload_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError("Upload session not found")
+        chunks = set(json.loads(row["received_chunks"] or "[]"))
+        chunks.add(chunk_index)
+        chunks_list = sorted(list(chunks))
+        conn.execute("""
+            UPDATE upload_sessions 
+            SET received_chunks = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?;
+        """, (json.dumps(chunks_list), upload_id))
+        return chunks_list
+
+def delete_upload_session(upload_id: str, user_email: Optional[str] = None, db_path: Optional[str] = None):
+    with get_connection(db_path) as conn:
+        if user_email and user_email != "default":
+            conn.execute("DELETE FROM upload_sessions WHERE id = ? AND user_email = ?;", (upload_id, user_email))
+        else:
+            conn.execute("DELETE FROM upload_sessions WHERE id = ?;", (upload_id,))
+
+def get_stale_upload_sessions(max_age_seconds: int = 86400, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT * FROM upload_sessions 
+            WHERE (strftime('%s', 'now') - strftime('%s', updated_at)) > ?;
+        """, (max_age_seconds,))
+        return [dict(row) for row in cursor.fetchall()]
 
 # --- MEETINGS CRUD ---
 
@@ -183,374 +142,508 @@ def save_meeting(
     user_email: str = "default",
     title: Optional[str] = None,
     duration_seconds: float = 0,
-    provider_stt: Optional[str] = None,
-    provider_llm: Optional[str] = None,
+    provider_stt: str = "Groq Whisper",
+    provider_llm: str = "Google Gemini Flash",
     segments: Optional[List[Dict[str, Any]]] = None,
     speakers: Optional[List[str]] = None,
     action_items: Optional[List[Dict[str, Any]]] = None,
     folder_id: Optional[int] = None,
+    db_path: Optional[str] = None,
 ) -> int:
-    norm_user = (user_email or "default").strip().lower()
-    clean_title = title.strip() if title and title.strip() else filename.replace("_", " ").replace("-", " ")
-    segments_str = json.dumps(segments or [])
-    speakers_str = json.dumps(speakers or [])
-    action_items_str = json.dumps(action_items or [])
-    
-    with get_connection() as conn:
+    resolved_title = title or filename
+    segments_json = json.dumps(segments or [])
+    speakers_json = json.dumps(speakers or [])
+    action_items_json = json.dumps(action_items or [])
+
+    with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute('''
+        cursor.execute("""
             INSERT INTO meetings (
-                filename, title, media_type, raw_transcript, summary,
-                duration_seconds, provider_stt, provider_llm,
-                segments_json, speakers_json, action_items_json,
-                folder_id, created_at, updated_at, user_email
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            filename, clean_title, media_type, raw_transcript, summary,
-            duration_seconds, provider_stt, provider_llm,
-            segments_str, speakers_str, action_items_str,
-            folder_id, datetime.now(), datetime.now(), norm_user
+                filename, media_type, raw_transcript, summary, user_email,
+                title, duration_seconds, provider_stt, provider_llm,
+                segments_json, speakers_json, action_items_json, folder_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """, (
+            filename, media_type, raw_transcript, summary, user_email,
+            resolved_title, duration_seconds, provider_stt, provider_llm,
+            segments_json, speakers_json, action_items_json, folder_id
         ))
         meeting_id = cursor.lastrowid
-        
-        # Also index action items into action_items table if present
-        if action_items and meeting_id is not None:
+
+        # Insert extracted action items into relational table
+        if action_items:
             for item in action_items:
-                cursor.execute('''
-                    INSERT INTO action_items (meeting_id, task, owner, target_date, status, user_email)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
+                cursor.execute("""
+                    INSERT INTO action_items (meeting_id, user_email, task, owner, target_date, status)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                """, (
                     meeting_id,
+                    user_email,
                     item.get("task", ""),
                     item.get("owner"),
                     item.get("target_date") or item.get("target"),
-                    item.get("status", "open"),
-                    norm_user,
+                    item.get("status", "open")
                 ))
-                
-        conn.commit()
-        return meeting_id if meeting_id is not None else 0
 
-def get_all_meetings(user_email: str = "default", folder_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    if not os.path.exists(DB_NAME):
-        return []
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
+        return meeting_id
+
+def get_all_meetings(user_email: str = "default", folder_id: Optional[int] = None, tag_id: Optional[int] = None, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        params: List[Any] = [user_email]
+        sql = "SELECT m.* FROM meetings m"
+        if tag_id is not None:
+            sql += " JOIN meeting_tags mt ON mt.meeting_id = m.id WHERE m.user_email = ? AND mt.tag_id = ?"
+            params.append(tag_id)
+        else:
+            sql += " WHERE m.user_email = ?"
+        
         if folder_id is not None:
-            cursor.execute(
-                'SELECT id, filename, title, media_type, raw_transcript, summary, duration_seconds, provider_stt, provider_llm, segments_json, speakers_json, action_items_json, folder_id, created_at, user_email FROM meetings WHERE user_email = ? AND folder_id = ? ORDER BY created_at DESC',
-                (norm_user, folder_id)
-            )
-        else:
-            cursor.execute(
-                'SELECT id, filename, title, media_type, raw_transcript, summary, duration_seconds, provider_stt, provider_llm, segments_json, speakers_json, action_items_json, folder_id, created_at, user_email FROM meetings WHERE user_email = ? ORDER BY created_at DESC',
-                (norm_user,)
-            )
-        rows = cursor.fetchall()
-        
-    return [
-        {
-            "id": row[0],
-            "filename": row[1],
-            "title": row[2] or row[1],
-            "media_type": row[3],
-            "raw_transcript": row[4],
-            "summary": row[5],
-            "duration_seconds": row[6],
-            "provider_stt": row[7],
-            "provider_llm": row[8],
-            "segments": json.loads(row[9] or "[]"),
-            "speakers": json.loads(row[10] or "[]"),
-            "action_items": json.loads(row[11] or "[]"),
-            "folder_id": row[12],
-            "created_at": row[13],
-            "user_email": row[14],
-        }
-        for row in rows
-    ]
+            sql += " AND m.folder_id = ?"
+            params.append(folder_id)
+            
+        sql += " ORDER BY m.created_at DESC;"
+        cursor = conn.execute(sql, params)
+        meetings = [dict(row) for row in cursor.fetchall()]
 
-def get_meeting(meeting_id: int, user_email: str = "default") -> Optional[Dict[str, Any]]:
-    if not os.path.exists(DB_NAME):
-        return None
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT id, filename, title, media_type, raw_transcript, summary, duration_seconds, provider_stt, provider_llm, segments_json, speakers_json, action_items_json, folder_id, created_at, user_email FROM meetings WHERE id = ? AND user_email = ?',
-            (meeting_id, norm_user)
-        )
+        # Attach tags to each meeting
+        for m in meetings:
+            t_cursor = conn.execute("""
+                SELECT t.id, t.name, t.color FROM tags t
+                JOIN meeting_tags mt ON mt.tag_id = t.id
+                WHERE mt.meeting_id = ?
+                ORDER BY t.name ASC;
+            """, (m["id"],))
+            m["tags"] = [dict(r) for r in t_cursor.fetchall()]
+
+        return meetings
+
+def get_meeting(meeting_id: int, user_email: str = "default", db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT * FROM meetings 
+            WHERE id = ? AND user_email = ?;
+        """, (meeting_id, user_email))
         row = cursor.fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        t_cursor = conn.execute("""
+            SELECT t.id, t.name, t.color FROM tags t
+            JOIN meeting_tags mt ON mt.tag_id = t.id
+            WHERE mt.meeting_id = ?
+            ORDER BY t.name ASC;
+        """, (meeting_id,))
+        res["tags"] = [dict(r) for r in t_cursor.fetchall()]
+        return res
+
+def delete_meeting(meeting_id: int, user_email: str = "default", db_path: Optional[str] = None):
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM meeting_tags WHERE meeting_id = ?;", (meeting_id,))
+        conn.execute("DELETE FROM meetings WHERE id = ? AND user_email = ?;", (meeting_id, user_email))
+
+def search_meetings(query: str, media_type: str = "", user_email: str = "default", db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        params: List[Any] = [user_email]
+        sql = "SELECT * FROM meetings WHERE user_email = ?"
         
-    if row:
-        return {
-            "id": row[0],
-            "filename": row[1],
-            "title": row[2] or row[1],
-            "media_type": row[3],
-            "raw_transcript": row[4],
-            "summary": row[5],
-            "duration_seconds": row[6],
-            "provider_stt": row[7],
-            "provider_llm": row[8],
-            "segments": json.loads(row[9] or "[]"),
-            "speakers": json.loads(row[10] or "[]"),
-            "action_items": json.loads(row[11] or "[]"),
-            "folder_id": row[12],
-            "created_at": row[13],
-            "user_email": row[14],
-        }
-    return None
-
-def update_meeting_title(meeting_id: int, title: str, user_email: str = "default") -> bool:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE meetings SET title = ?, updated_at = ? WHERE id = ? AND user_email = ?",
-            (title.strip(), datetime.now(), meeting_id, norm_user)
-        )
-        conn.commit()
-        return cursor.rowcount > 0
-
-def delete_meeting(meeting_id: int, user_email: str = "default"):
-    if not os.path.exists(DB_NAME):
-        return
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        if norm_user == "admin":
-            cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
-        else:
-            cursor.execute("DELETE FROM meetings WHERE id = ? AND user_email = ?", (meeting_id, norm_user))
-        conn.commit()
-
-def search_meetings(query: str = "", media_type: str = "", user_email: str = "default") -> List[Dict[str, Any]]:
-    if not os.path.exists(DB_NAME):
-        return []
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        sql = "SELECT id, filename, title, media_type, raw_transcript, summary, duration_seconds, provider_stt, provider_llm, segments_json, speakers_json, action_items_json, folder_id, created_at, user_email FROM meetings WHERE user_email = ?"
-        params: List[Any] = [norm_user]
         if query:
-            q = f"%{query}%"
-            sql += " AND (filename LIKE ? OR title LIKE ? OR raw_transcript LIKE ? OR summary LIKE ?)"
-            params.extend([q, q, q, q])
+            sql += " AND (filename LIKE ? OR raw_transcript LIKE ? OR summary LIKE ? OR title LIKE ?)"
+            like_q = f"%{query}%"
+            params.extend([like_q, like_q, like_q, like_q])
+            
         if media_type and media_type != "all":
             sql += " AND media_type = ?"
             params.append(media_type)
-        sql += " ORDER BY created_at DESC"
-        cursor.execute(sql, params)
-        rows = cursor.fetchall()
-        
-    return [
-        {
-            "id": row[0],
-            "filename": row[1],
-            "title": row[2] or row[1],
-            "media_type": row[3],
-            "raw_transcript": row[4],
-            "summary": row[5],
-            "duration_seconds": row[6],
-            "provider_stt": row[7],
-            "provider_llm": row[8],
-            "segments": json.loads(row[9] or "[]"),
-            "speakers": json.loads(row[10] or "[]"),
-            "action_items": json.loads(row[11] or "[]"),
-            "folder_id": row[12],
-            "created_at": row[13],
-            "user_email": row[14],
-        }
-        for row in rows
-    ]
+            
+        sql += " ORDER BY created_at DESC;"
+        cursor = conn.execute(sql, params)
+        meetings = [dict(row) for row in cursor.fetchall()]
 
-# --- STATS & ANALYTICS ---
+        for m in meetings:
+            t_cursor = conn.execute("""
+                SELECT t.id, t.name, t.color FROM tags t
+                JOIN meeting_tags mt ON mt.tag_id = t.id
+                WHERE mt.meeting_id = ?
+                ORDER BY t.name ASC;
+            """, (m["id"],))
+            m["tags"] = [dict(r) for r in t_cursor.fetchall()]
 
-def get_stats(user_email: str = "default") -> Dict[str, Any]:
-    if not os.path.exists(DB_NAME):
-        return {
-            "total_meetings": 0,
-            "total_characters": 0,
-            "estimated_minutes": 0,
-            "hours_saved": 0,
-            "open_action_items": 0,
-            "completed_action_items": 0,
-        }
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(raw_transcript)), 0) FROM meetings WHERE user_email = ?", (norm_user,))
-        m_row = cursor.fetchone()
-        
-        cursor.execute("SELECT COUNT(*) FROM action_items WHERE user_email = ? AND status = 'open'", (norm_user,))
-        open_actions = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM action_items WHERE user_email = ? AND status = 'done'", (norm_user,))
-        done_actions = cursor.fetchone()[0]
-        
-    count = m_row[0] if m_row else 0
-    total_chars = m_row[1] if m_row else 0
-    
-    return {
-        "total_meetings": count,
-        "total_characters": total_chars,
-        "estimated_minutes": round(total_chars / 500, 1),
-        "hours_saved": round(count * 0.75, 1),
-        "open_action_items": open_actions,
-        "completed_action_items": done_actions,
-    }
-
-# --- PRESETS CRUD ---
-
-def get_custom_presets(user_email: str = "default") -> list[dict]:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, title, prompt FROM custom_presets WHERE user_email = ? ORDER BY created_at ASC", (norm_user,))
-        rows = cursor.fetchall()
-    return [{"id": f"custom_{row[0]}", "db_id": row[0], "title": row[1], "prompt": row[2], "custom": True} for row in rows]
-
-def save_custom_preset(title: str, prompt: str, user_email: str = "default") -> dict:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO custom_presets (title, prompt, user_email) VALUES (?, ?, ?)", (title, prompt, norm_user))
-        conn.commit()
-        new_id = cursor.lastrowid
-    return {"id": f"custom_{new_id}", "db_id": new_id, "title": title, "prompt": prompt, "custom": True}
-
-def delete_custom_preset(db_id: int, user_email: str = "default"):
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM custom_presets WHERE id = ? AND user_email = ?", (db_id, norm_user))
-        conn.commit()
+        return meetings
 
 # --- ACTION ITEMS CRUD ---
 
-def get_user_action_items(user_email: str = "default", status: Optional[str] = None) -> List[Dict[str, Any]]:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        if status:
-            cursor.execute(
-                "SELECT a.id, a.meeting_id, a.task, a.owner, a.target_date, a.status, a.created_at, m.title FROM action_items a LEFT JOIN meetings m ON a.meeting_id = m.id WHERE a.user_email = ? AND a.status = ? ORDER BY a.created_at DESC",
-                (norm_user, status)
-            )
+def get_user_action_items(user_email: str = "default", status: Optional[str] = None, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        if status and status != "all":
+            cursor = conn.execute("""
+                SELECT a.*, m.title as meeting_title, m.filename as meeting_filename
+                FROM action_items a
+                JOIN meetings m ON a.meeting_id = m.id
+                WHERE a.user_email = ? AND a.status = ?
+                ORDER BY a.created_at DESC;
+            """, (user_email, status))
         else:
-            cursor.execute(
-                "SELECT a.id, a.meeting_id, a.task, a.owner, a.target_date, a.status, a.created_at, m.title FROM action_items a LEFT JOIN meetings m ON a.meeting_id = m.id WHERE a.user_email = ? ORDER BY a.created_at DESC",
-                (norm_user,)
-            )
-        rows = cursor.fetchall()
-    return [
-        {
-            "id": r[0],
-            "meeting_id": r[1],
-            "task": r[2],
-            "owner": r[3],
-            "target_date": r[4],
-            "status": r[5],
-            "created_at": r[6],
-            "meeting_title": r[7] or "Untitled Meeting",
-        }
-        for r in rows
-    ]
+            cursor = conn.execute("""
+                SELECT a.*, m.title as meeting_title, m.filename as meeting_filename
+                FROM action_items a
+                JOIN meetings m ON a.meeting_id = m.id
+                WHERE a.user_email = ?
+                ORDER BY a.created_at DESC;
+            """, (user_email,))
+        return [dict(row) for row in cursor.fetchall()]
 
-def update_action_item_status(item_id: int, status: str, user_email: str = "default") -> bool:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE action_items SET status = ? WHERE id = ? AND user_email = ?",
-            (status, item_id, norm_user)
-        )
-        conn.commit()
+def update_action_item_status(item_id: int, status: str, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            UPDATE action_items 
+            SET status = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_email = ?;
+        """, (status, item_id, user_email))
         return cursor.rowcount > 0
 
-# --- FOLDERS & TAGS ---
+# --- FOLDERS & TAGS CRUD ---
 
-def get_folders(user_email: str = "default") -> List[Dict[str, Any]]:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, color, created_at FROM folders WHERE user_email = ? ORDER BY name ASC", (norm_user,))
-        rows = cursor.fetchall()
-    return [{"id": r[0], "name": r[1], "color": r[2], "created_at": r[3]} for r in rows]
+def get_folders(user_email: str = "default", db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT f.*, COUNT(m.id) as meeting_count
+            FROM folders f
+            LEFT JOIN meetings m ON m.folder_id = f.id
+            WHERE f.user_email = ?
+            GROUP BY f.id
+            ORDER BY f.name ASC;
+        """, (user_email,))
+        return [dict(row) for row in cursor.fetchall()]
 
-def create_folder(name: str, color: str = "#10b981", user_email: str = "default") -> Dict[str, Any]:
-    norm_user = (user_email or "default").strip().lower()
-    with get_connection() as conn:
+def create_folder(name: str, color: str = "#10b981", user_email: str = "default", db_path: Optional[str] = None) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO folders (name, color, user_email) VALUES (?, ?, ?)", (name.strip(), color, norm_user))
-        conn.commit()
-        new_id = cursor.lastrowid
-    return {"id": new_id, "name": name.strip(), "color": color}
+        cursor.execute("INSERT INTO folders (name, color, user_email) VALUES (?, ?, ?);", (name, color, user_email))
+        return {"id": cursor.lastrowid, "name": name, "color": color, "meeting_count": 0}
+
+def rename_folder(folder_id: int, name: str, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("UPDATE folders SET name = ? WHERE id = ? AND user_email = ?;", (name, folder_id, user_email))
+        return cursor.rowcount > 0
+
+def delete_folder(folder_id: int, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        # Move meetings in this folder to Uncategorized (NULL)
+        conn.execute("UPDATE meetings SET folder_id = NULL WHERE folder_id = ? AND user_email = ?;", (folder_id, user_email))
+        cursor = conn.execute("DELETE FROM folders WHERE id = ? AND user_email = ?;", (folder_id, user_email))
+        return cursor.rowcount > 0
+
+# --- TAGS CRUD ---
+
+def get_tags(user_email: str = "default", db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT t.*, COUNT(mt.meeting_id) as meeting_count
+            FROM tags t
+            LEFT JOIN meeting_tags mt ON mt.tag_id = t.id
+            WHERE t.user_email = ?
+            GROUP BY t.id
+            ORDER BY t.name ASC;
+        """, (user_email,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def create_tag(name: str, color: str = "#38bdf8", user_email: str = "default", db_path: Optional[str] = None) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        clean_name = name.strip()
+        conn.execute("INSERT OR IGNORE INTO tags (name, color, user_email) VALUES (?, ?, ?);", (clean_name, color, user_email))
+        cursor = conn.execute("SELECT id, name, color, user_email FROM tags WHERE name = ? AND user_email = ?;", (clean_name, user_email))
+        row = cursor.fetchone()
+        return dict(row) if row else {"id": 0, "name": clean_name, "color": color, "meeting_count": 0}
+
+def delete_tag(tag_id: int, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM meeting_tags WHERE tag_id = ?;", (tag_id,))
+        cursor = conn.execute("DELETE FROM tags WHERE id = ? AND user_email = ?;", (tag_id, user_email))
+        return cursor.rowcount > 0
+
+def assign_tag_to_meeting(meeting_id: int, tag_id: int, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("SELECT id FROM meetings WHERE id = ? AND user_email = ?;", (meeting_id, user_email))
+        if not cursor.fetchone():
+            return False
+        conn.execute("INSERT OR IGNORE INTO meeting_tags (meeting_id, tag_id) VALUES (?, ?);", (meeting_id, tag_id))
+        return True
+
+def remove_tag_from_meeting(meeting_id: int, tag_id: int, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("DELETE FROM meeting_tags WHERE meeting_id = ? AND tag_id = ?;", (meeting_id, tag_id))
+        return cursor.rowcount > 0
 
 # --- SECURE SHAREABLE LINKS ---
 
-def create_share_link(meeting_id: int, allow_transcript: bool = True, password: Optional[str] = None, user_email: str = "default") -> Dict[str, Any]:
-    norm_user = (user_email or "default").strip().lower()
-    token = secrets.token_urlsafe(24)
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    pw_hash = hashlib.sha256(password.encode()).hexdigest() if password else None
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        # Verify meeting belongs to user
-        cursor.execute("SELECT id FROM meetings WHERE id = ? AND user_email = ?", (meeting_id, norm_user))
-        if not cursor.fetchone():
-            raise ValueError("Meeting not found or access denied.")
-            
-        cursor.execute('''
-            INSERT INTO share_links (meeting_id, token_hash, password_hash, allow_transcript, user_email)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (meeting_id, token_hash, pw_hash, 1 if allow_transcript else 0, norm_user))
-        conn.commit()
-        
+def create_share_link(
+    meeting_id: int,
+    allow_transcript: bool = True,
+    password: Optional[str] = None,
+    expires_in_days: Optional[int] = 30,
+    user_email: str = "default",
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    # 1. Verify meeting ownership
+    meeting = get_meeting(meeting_id, user_email=user_email, db_path=db_path)
+    if not meeting:
+        raise ValueError("Meeting not found or unauthorized.")
+
+    # 2. Generate cryptographically secure token and SHA-256 hash
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    # 3. Hash password using PBKDF2-HMAC-SHA256 with salt
+    pw_hash = None
+    pw_salt = None
+    if password and password.strip():
+        pw_hash, pw_salt = hash_password(password.strip())
+
+    # 4. Expiration timestamp
+    expires_at = None
+    if expires_in_days:
+        expires_at = datetime.fromtimestamp(time.time() + expires_in_days * 86400, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection(db_path) as conn:
+        conn.execute("""
+            INSERT INTO share_links (
+                meeting_id, token_hash, password_hash, password_salt,
+                allow_transcript, expires_at, user_email
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (
+            meeting_id, token_hash, pw_hash, pw_salt,
+            1 if allow_transcript else 0, expires_at, user_email
+        ))
+
     return {
-        "share_token": token,
+        "share_token": raw_token,
         "allow_transcript": allow_transcript,
-        "is_password_protected": bool(password),
+        "has_password": bool(password and password.strip()),
+        "expires_at": expires_at,
     }
 
-def get_shared_meeting(token: str, password: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT s.meeting_id, s.password_hash, s.allow_transcript, s.expires_at, s.revoked_at,
-                   m.title, m.filename, m.media_type, m.summary, m.raw_transcript, m.created_at
+def get_shared_meeting(token: str, password: Optional[str] = None, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT s.*, m.title, m.filename, m.media_type, m.summary, m.raw_transcript, m.created_at as meeting_created_at
             FROM share_links s
             JOIN meetings m ON s.meeting_id = m.id
-            WHERE s.token_hash = ?
-        ''', (token_hash,))
+            WHERE s.token_hash = ? AND s.is_revoked = 0;
+        """, (token_hash,))
         row = cursor.fetchone()
-        
-    if not row:
-        return None
-        
-    pw_hash, allow_transcript, expires_at, revoked_at = row[1], row[2], row[3], row[4]
-    if revoked_at:
-        return {"error": "Link has been revoked."}
-        
-    if pw_hash:
-        if not password:
-            return {"password_required": True, "title": row[5] or row[6]}
-        entered_hash = hashlib.sha256(password.encode()).hexdigest()
-        if entered_hash != pw_hash:
-            return {"error": "Invalid password.", "password_required": True}
-            
-    return {
-        "title": row[5] or row[6],
-        "filename": row[6],
-        "media_type": row[7],
-        "summary": row[8],
-        "raw_transcript": row[9] if allow_transcript else None,
-        "created_at": row[10],
-    }
+        if not row:
+            return None
 
-# Initialize on import
+        # Check expiration
+        if row["expires_at"]:
+            try:
+                exp = datetime.strptime(row["expires_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > exp:
+                    return None
+            except Exception:
+                pass
+
+        # Check password requirement
+        if row["password_hash"]:
+            if not password:
+                return {
+                    "password_required": True,
+                    "title": row["title"] or row["filename"],
+                    "created_at": row["meeting_created_at"],
+                }
+            if not verify_password(password, row["password_hash"], row["password_salt"]):
+                return {"error": "Invalid password", "password_required": True}
+
+        # Increment view count
+        conn.execute("UPDATE share_links SET view_count = view_count + 1 WHERE id = ?;", (row["id"],))
+
+        return {
+            "title": row["title"] or row["filename"],
+            "filename": row["filename"],
+            "media_type": row["media_type"],
+            "summary": row["summary"],
+            "raw_transcript": row["raw_transcript"] if row["allow_transcript"] else None,
+            "created_at": row["meeting_created_at"],
+            "allow_transcript": bool(row["allow_transcript"]),
+        }
+
+def revoke_share_link(token: str, user_email: str = "default", db_path: Optional[str] = None) -> bool:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            UPDATE share_links 
+            SET is_revoked = 1 
+            WHERE token_hash = ? AND user_email = ?;
+        """, (token_hash, user_email))
+        return cursor.rowcount > 0
+
+def regenerate_share_token(old_token: str, user_email: str = "default", db_path: Optional[str] = None) -> Optional[str]:
+    old_hash = hashlib.sha256(old_token.encode("utf-8")).hexdigest()
+    new_raw_token = secrets.token_urlsafe(32)
+    new_hash = hashlib.sha256(new_raw_token.encode("utf-8")).hexdigest()
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            UPDATE share_links 
+            SET token_hash = ?, is_revoked = 0 
+            WHERE token_hash = ? AND user_email = ?;
+        """, (new_hash, old_hash, user_email))
+        if cursor.rowcount > 0:
+            return new_raw_token
+    return None
+
+# --- PRESETS CRUD ---
+
+def get_custom_presets(user_email: str = "default", db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT id, title, prompt, created_at
+            FROM custom_presets
+            WHERE user_email = ?
+            ORDER BY id ASC;
+        """, (user_email,))
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": f"custom_{r['id']}",
+                "title": r["title"],
+                "description": r["prompt"][:80] + "..." if len(r["prompt"]) > 80 else r["prompt"],
+                "prompt": r["prompt"],
+                "custom": True,
+            }
+            for r in rows
+        ]
+
+def save_custom_preset(title: str, prompt: str, user_email: str = "default", db_path: Optional[str] = None) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO custom_presets (title, prompt, user_email) VALUES (?, ?, ?);", (title, prompt, user_email))
+        db_id = cursor.lastrowid
+        return {
+            "id": f"custom_{db_id}",
+            "title": title,
+            "description": prompt[:80] + "..." if len(prompt) > 80 else prompt,
+            "prompt": prompt,
+            "custom": True,
+        }
+
+def delete_custom_preset(db_id: int, user_email: str = "default", db_path: Optional[str] = None):
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM custom_presets WHERE id = ? AND user_email = ?;", (db_id, user_email))
+
+# --- JOBS BATCH PROCESSING CRUD ---
+
+def create_job(
+    job_id: str,
+    filename: str,
+    media_type: str = "mp4",
+    filesize: int = 0,
+    user_email: str = "default",
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        conn.execute("""
+            INSERT INTO jobs (id, user_email, status, filename, media_type, filesize, progress)
+            VALUES (?, ?, 'pending', ?, ?, ?, 0);
+        """, (job_id, user_email, filename, media_type, filesize))
+        return {
+            "id": job_id,
+            "status": "pending",
+            "filename": filename,
+            "media_type": media_type,
+            "filesize": filesize,
+            "progress": 0,
+        }
+
+def get_user_jobs(user_email: str = "default", db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT * FROM jobs
+            WHERE user_email = ?
+            ORDER BY created_at DESC
+            LIMIT 50;
+        """, (user_email,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_job(job_id: str, user_email: str = "default", db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT * FROM jobs
+            WHERE id = ? AND user_email = ?;
+        """, (job_id, user_email))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+def update_job_status(
+    job_id: str,
+    status: str,
+    progress: int = 0,
+    meeting_id: Optional[int] = None,
+    error_message: Optional[str] = None,
+    user_email: str = "default",
+    db_path: Optional[str] = None,
+):
+    with get_connection(db_path) as conn:
+        conn.execute("""
+            UPDATE jobs
+            SET status = ?, progress = ?, meeting_id = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_email = ?;
+        """, (status, progress, meeting_id, error_message, job_id, user_email))
+
+def get_pending_jobs(limit: int = 5, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute("""
+            SELECT * FROM jobs
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+            LIMIT ?;
+        """, (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def delete_job(job_id: str, user_email: str = "default", db_path: Optional[str] = None):
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM jobs WHERE id = ? AND user_email = ?;", (job_id, user_email))
+
+# --- USER WORKSPACE DATA BACKUP & EXPORT ---
+
+def export_user_workspace(user_email: str = "default", db_path: Optional[str] = None) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        meetings = [dict(r) for r in conn.execute("SELECT * FROM meetings WHERE user_email = ? ORDER BY created_at ASC;", (user_email,)).fetchall()]
+        actions = [dict(r) for r in conn.execute("SELECT * FROM action_items WHERE user_email = ? ORDER BY created_at ASC;", (user_email,)).fetchall()]
+        folders = [dict(r) for r in conn.execute("SELECT * FROM folders WHERE user_email = ? ORDER BY id ASC;", (user_email,)).fetchall()]
+        tags = [dict(r) for r in conn.execute("SELECT * FROM tags WHERE user_email = ? ORDER BY id ASC;", (user_email,)).fetchall()]
+        presets = [dict(r) for r in conn.execute("SELECT * FROM custom_presets WHERE user_email = ? ORDER BY id ASC;", (user_email,)).fetchall()]
+        
+        return {
+            "version": "1.0.0",
+            "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "user_email": user_email,
+            "counts": {
+                "meetings": len(meetings),
+                "action_items": len(actions),
+                "folders": len(folders),
+                "tags": len(tags),
+                "presets": len(presets),
+            },
+            "meetings": meetings,
+            "action_items": actions,
+            "folders": folders,
+            "tags": tags,
+            "presets": presets,
+        }
+
+# --- STATS ---
+
+def get_stats(user_email: str = "default", db_path: Optional[str] = None) -> Dict[str, Any]:
+    with get_connection(db_path) as conn:
+        m_count = conn.execute("SELECT COUNT(*) FROM meetings WHERE user_email = ?;", (user_email,)).fetchone()[0]
+        a_count = conn.execute("SELECT COUNT(*) FROM action_items WHERE user_email = ? AND status = 'open';", (user_email,)).fetchone()[0]
+        f_count = conn.execute("SELECT COUNT(*) FROM folders WHERE user_email = ?;", (user_email,)).fetchone()[0]
+        return {
+            "total_meetings": m_count,
+            "open_action_items": a_count,
+            "total_folders": f_count,
+        }
+
+# Run migrations at module load
 init_db()

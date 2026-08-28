@@ -14,29 +14,67 @@ import { Button } from "@/components/ui/button";
 import { MeetingMarkdown } from "@/components/markdown/MeetingMarkdown";
 import { getApiBaseUrl } from "@/lib/api";
 
+interface SharedMeetingData {
+  title?: string;
+  filename?: string;
+  media_type?: string;
+  summary: string;
+  raw_transcript?: string;
+  created_at: string;
+  allow_transcript?: boolean;
+  password_required?: boolean;
+  error?: string;
+}
+
 function SharedMeetingContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
 
-  const [meeting, setMeeting] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [meeting, setMeeting] = useState<SharedMeetingData | null>(null);
+  const [loading, setLoading] = useState<boolean>(Boolean(token));
   const [password, setPassword] = useState("");
   const [passwordRequired, setPasswordRequired] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string>(token ? "" : "No share token provided in URL.");
   const [copied, setCopied] = useState(false);
 
-  const fetchSharedMeeting = (pw?: string) => {
-    if (!token) {
-      setError("No share token provided in URL.");
-      setLoading(false);
-      return;
-    }
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+    axios
+      .get(`${getApiBaseUrl()}/api/share/${token}`)
+      .then((res) => {
+        if (!isMounted) return;
+        if (res.data.password_required) {
+          setPasswordRequired(true);
+        } else if (res.data.error) {
+          setError(res.data.error);
+        } else {
+          setMeeting(res.data);
+          setPasswordRequired(false);
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setError(err.response?.data?.error?.message || err.response?.data?.detail || "Shared meeting link is invalid or expired.");
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const handleUnlockWithPassword = (pw: string) => {
+    if (!token) return;
     setLoading(true);
     setError("");
 
     axios
       .get(`${getApiBaseUrl()}/api/share/${token}`, {
-        params: pw ? { password: pw } : {},
+        params: { password: pw },
       })
       .then((res) => {
         if (res.data.password_required) {
@@ -49,16 +87,12 @@ function SharedMeetingContent() {
         }
       })
       .catch((err) => {
-        setError(err.response?.data?.detail || "Shared meeting link is invalid or expired.");
+        setError(err.response?.data?.error?.message || err.response?.data?.detail || "Invalid password.");
       })
       .finally(() => {
         setLoading(false);
       });
   };
-
-  useEffect(() => {
-    fetchSharedMeeting();
-  }, [token]);
 
   const handleCopy = () => {
     if (meeting?.summary) {
@@ -95,7 +129,7 @@ function SharedMeetingContent() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              fetchSharedMeeting(password);
+              handleUnlockWithPassword(password);
             }}
             className="space-y-3"
           >
@@ -135,6 +169,9 @@ function SharedMeetingContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8">
+      <head>
+        <meta name="robots" content="noindex, nofollow" />
+      </head>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl">
@@ -150,7 +187,7 @@ function SharedMeetingContent() {
             </h1>
             <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
               <Calendar className="w-3.5 h-3.5" />
-              <span>{new Date(meeting?.created_at).toLocaleDateString()}</span>
+              <span>{meeting?.created_at ? new Date(meeting.created_at).toLocaleDateString() : "Recent"}</span>
             </div>
           </div>
 

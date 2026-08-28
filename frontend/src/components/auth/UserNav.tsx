@@ -7,7 +7,6 @@ import {
   LogOut,
   Shield,
   ChevronDown,
-  LogIn,
   Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";

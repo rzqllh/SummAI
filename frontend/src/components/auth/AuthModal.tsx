@@ -1,14 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Shield,
   X,
-  Sparkles,
   Mail,
   ArrowRight,
-  User,
-  CheckCircle2,
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,8 +17,9 @@ interface AuthModalProps {
   onSelectWorkspace: (email: string, name?: string) => void;
 }
 
-const POPULAR_SUGGESTIONS = [
-  { email: "alex@company.com", label: "Work Account" },
+const PRESET_ACCOUNTS = [
+  { email: "default", label: "Local Private Workspace (SQLite)" },
+  { email: "executive@company.com", label: "Executive Office" },
   { email: "research@team.io", label: "Research Lab" },
   { email: "engineering@corp.net", label: "Dev Team" },
 ];
@@ -32,15 +30,8 @@ export function AuthModal({
   currentEmail,
   onSelectWorkspace,
 }: AuthModalProps) {
-  const [emailInput, setEmailInput] = useState("");
+  const [emailInput, setEmailInput] = useState(currentEmail === "default" ? "" : currentEmail);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setEmailInput(currentEmail === "default" ? "" : currentEmail);
-      setError(null);
-    }
-  }, [isOpen, currentEmail]);
 
   if (!isOpen) return null;
 
@@ -159,7 +150,7 @@ export function AuthModal({
 
             {/* Quick Chips */}
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {POPULAR_SUGGESTIONS.map((s) => (
+              {PRESET_ACCOUNTS.map((s) => (
                 <button
                   key={s.email}
                   type="button"
