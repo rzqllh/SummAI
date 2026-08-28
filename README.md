@@ -19,7 +19,7 @@ Convert hours of recorded audio, video, and transcripts into actionable Markdown
 
 - **🚀 Groq Whisper Large-v3 STT**: Transcribe audio and video files in seconds with real-time progress, live elapsed timer, and speed tracking.
 - **🧠 Google Gemini 3.6 Flash Synthesis**: Transform raw transcripts into structured executive summaries, action items, sprint retrospectives, and architecture reviews.
-- **🛡️ 100% Local Privacy**: Your transcripts and meeting records are stored exclusively on your machine in local SQLite (`meetings.db`). Zero telemetry, zero cloud tracking.
+- **🛡️ BYOK Privacy**: Meeting records and summaries are stored locally in SQLite on your machine — SummAI has no server, no account, and no access to your data. STT and synthesis run through your own Groq, Gemini, and Cloudflare API keys: the audio and transcript go directly from your machine to your provider, never through a SummAI middleman.
 - **🎨 Modern Aesthetic Dashboard**:
   - **Overview**: Real-time stats, metrics, quick dropzone, and recent synthesis history.
   - **Summarizer Studio**: 4-step workflow (*Upload Media* → *Review Transcript* → *Select Preset* → *Export Summary*) with abortable cancellation.

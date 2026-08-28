@@ -247,7 +247,7 @@ export function ActiveJobCard({
       {/* Privacy note */}
       <div className="pt-2 flex items-center gap-2 text-xs text-slate-400">
         <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-        <span>All processing is performed locally on your machine. Your data stays private.</span>
+        <span>Meeting records stay on your machine. STT and synthesis run through your own API keys — no SummAI server ever sees your audio or transcript.</span>
       </div>
     </div>
   );
