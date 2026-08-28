@@ -7,34 +7,35 @@ import {
   CheckCircle2,
   Download,
   RotateCcw,
-  Layers,
+  FileText,
+  FileCode,
+  MessageSquare,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { exportToPdf, exportToDocx } from "@/lib/exportUtils";
+import { MeetingChatDrawer } from "./MeetingChatDrawer";
 
 interface SummaryExporterProps {
   summary: string;
+  rawTranscript?: string;
   filename: string;
   onReset: () => void;
 }
 
 export function SummaryExporter({
   summary,
+  rawTranscript = "",
   filename,
   onReset,
 }: SummaryExporterProps) {
   const [copyState, setCopyState] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const handleCopy = (type: "md" | "notion" | "jira") => {
+  const handleCopy = (type: "md" | "text") => {
     let textToCopy = summary;
-
-    if (type === "jira") {
-      // Basic translation of Markdown headers & bullet points to Jira markup format
-      textToCopy = summary
-        .replace(/^### (.*$)/gim, "h3. $1")
-        .replace(/^## (.*$)/gim, "h2. $1")
-        .replace(/^# (.*$)/gim, "h1. $1")
-        .replace(/^\* /gim, "* ")
-        .replace(/\*\*(.*?)\*\*/g, "*$1*");
+    if (type === "text") {
+      textToCopy = summary.replace(/[#*`_~[\]|]/g, "").replace(/\n\s*-\s*/g, "\n• ");
     }
 
     navigator.clipboard.writeText(textToCopy);
@@ -55,7 +56,7 @@ export function SummaryExporter({
   return (
     <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-6">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
@@ -73,6 +74,18 @@ export function SummaryExporter({
 
         {/* 1-Click Action Hub */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Chat with Meeting button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsChatOpen(true)}
+            className="border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-xs h-9 px-3 rounded-xl flex items-center gap-1.5 transition-colors"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>Chat with Meeting</span>
+          </Button>
+
+          {/* Copy Markdown */}
           <Button
             variant="outline"
             size="sm"
@@ -82,7 +95,7 @@ export function SummaryExporter({
             {copyState === "md" ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mr-1.5" />
-                <span className="text-emerald-400">Copied MD</span>
+                <span className="text-emerald-400">Copied Markdown</span>
               </>
             ) : (
               <>
@@ -92,25 +105,29 @@ export function SummaryExporter({
             )}
           </Button>
 
+          {/* Export Word (.docx) */}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => handleCopy("jira")}
+            onClick={() => exportToDocx(filename, summary)}
             className="border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs h-9 px-3 rounded-xl"
           >
-            {copyState === "jira" ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 mr-1.5" />
-                <span className="text-cyan-400">Copied Jira</span>
-              </>
-            ) : (
-              <>
-                <Layers className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
-                <span>Copy Jira</span>
-              </>
-            )}
+            <FileText className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+            <span>Export DOCX</span>
           </Button>
 
+          {/* Export PDF */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportToPdf(filename, summary)}
+            className="border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs h-9 px-3 rounded-xl"
+          >
+            <FileCode className="w-3.5 h-3.5 mr-1.5 text-rose-400" />
+            <span>Export PDF</span>
+          </Button>
+
+          {/* Download .md */}
           <Button
             variant="outline"
             size="sm"
@@ -142,6 +159,15 @@ export function SummaryExporter({
           <span>New Synthesis</span>
         </Button>
       </div>
+
+      {/* Meeting Chat Q&A Drawer */}
+      <MeetingChatDrawer
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        rawTranscript={rawTranscript || summary}
+        summary={summary}
+        meetingTitle={filename}
+      />
     </div>
   );
 }

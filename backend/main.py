@@ -410,10 +410,10 @@ Do not add a meeting summary.""",
             "custom": False,
         },
         {
-            "id": "jira",
-            "title": "Action Items & Jira Tasks",
-            "description": "Extract explicit tasks into a structured table with assignees, deadlines, and Jira markup.",
-            "prompt": "Extract all action items, assignees, and deadlines into a clear Markdown table, followed by formatted Jira-ready task tickets.",
+            "id": "action_items",
+            "title": "Action Items & Tasks",
+            "description": "Extract explicit tasks into a structured table with assignees, deadlines, and operational checklists.",
+            "prompt": "Extract all action items, assignees, and deadlines into a clear Markdown table, followed by formatted actionable checklists.",
             "custom": False,
         },
         {
@@ -466,3 +466,56 @@ async def delete_preset(
     user_email = (x_user_email or "default").strip().lower()
     await asyncio.to_thread(db.delete_custom_preset, db_id, user_email=user_email)
     return {"status": "deleted", "id": preset_id}
+
+class ChatMeetingRequest(BaseModel):
+    raw_transcript: str
+    summary: Optional[str] = None
+    question: str
+
+@app.post("/api/chat-meeting")
+async def chat_meeting(
+    req: ChatMeetingRequest,
+    x_gemini_api_key: Optional[str] = Header(None),
+    x_groq_api_key: Optional[str] = Header(None),
+    x_cf_api_token: Optional[str] = Header(None),
+):
+    question = req.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    if not req.raw_transcript and not req.summary:
+        raise HTTPException(status_code=400, detail="Transcript or summary context required")
+
+    system_prompt = f"""ROLE: You are an intelligent Meeting Q&A Assistant.
+Answer the user's question accurately, concisely, and factually using ONLY the meeting context below.
+
+RULES:
+- Ground all facts strictly in the transcript or summary.
+- If a person, date, technical value, or decision was NOT mentioned, state truthfully: "This detail was not discussed or mentioned in the meeting records."
+- Do NOT hallucinate.
+- Keep answers operational, bulleted, and directly helpful.
+
+MEETING CONTEXT:
+Summary:
+{req.summary or "N/A"}
+
+Transcript:
+{req.raw_transcript}
+
+QUESTION:
+{question}
+"""
+    try:
+        result = await generate_summary_with_fallback(
+            raw_transcript=req.raw_transcript,
+            custom_prompt=system_prompt,
+            custom_gemini_key=x_gemini_api_key,
+            custom_groq_key=x_groq_api_key,
+            custom_cf_token=x_cf_api_token,
+        )
+        return {
+            "answer": result["summary"],
+            "provider_used": result.get("provider", "Google Gemini Flash"),
+        }
+    except Exception as e:
+        logger.error("Chat meeting error", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to answer question: {str(e)}")

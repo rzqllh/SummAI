@@ -51,6 +51,9 @@ def init_db():
             )
         ''')
         _migrate_columns(conn)
+        # Performance Indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_meetings_user_created ON meetings(user_email, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_custom_presets_user ON custom_presets(user_email)")
         conn.commit()
 
 def save_meeting(filename: str, media_type: str, raw_transcript: str, summary: str, user_email: str = "default"):

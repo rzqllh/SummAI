@@ -21,6 +21,8 @@ import { SummaryExporter } from "@/components/studio/SummaryExporter";
 import { TranscriptTips } from "@/components/studio/TranscriptTips";
 import { RecentJobsWidget } from "@/components/studio/RecentJobsWidget";
 import { ActiveJobCard } from "@/components/studio/ActiveJobCard";
+import { AudioPlayerWidget } from "@/components/studio/AudioPlayerWidget";
+import { MicrophoneRecorder } from "@/components/studio/MicrophoneRecorder";
 import { getApiBaseUrl } from "@/lib/api";
 
 export default function SummarizerStudioPage() {
@@ -28,7 +30,7 @@ export default function SummarizerStudioPage() {
   const [maxReachedStep, setMaxReachedStep] = useState<StudioStep>(1);
 
   // File upload & metadata state
-  const [, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
   const [filesize, setFilesize] = useState("");
   const [duration, setDuration] = useState("00:15:00");
@@ -63,133 +65,70 @@ export default function SummarizerStudioPage() {
     return mb.toFixed(1) + " MB";
   };
 
-  // Extract duration from audio/video
-  const extractMediaDuration = (selectedFile: File) => {
-    try {
-      const url = URL.createObjectURL(selectedFile);
-      const isVideo = selectedFile.type.startsWith("video") || ["mp4", "mov", "mkv", "avi", "webm"].includes(selectedFile.name.split(".").pop()?.toLowerCase() || "");
-      const mediaEl = document.createElement(isVideo ? "video" : "audio");
-      mediaEl.preload = "metadata";
-      mediaEl.src = url;
-      mediaEl.onloadedmetadata = () => {
-        URL.revokeObjectURL(url);
-        const secs = Math.round(mediaEl.duration);
-        if (secs && !isNaN(secs) && isFinite(secs)) {
-          const hrs = Math.floor(secs / 3600);
-          const mins = Math.floor((secs % 3600) / 60);
-          const s = secs % 60;
-          setDuration(
-            `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
-          );
-        }
-      };
-    } catch {
-      setDuration("00:25:30");
-    }
-  };
-
   const handleFileUpload = useCallback(async (selectedFile: File) => {
     setFile(selectedFile);
     setFilename(selectedFile.name);
     setFilesize(formatBytes(selectedFile.size));
     const ext = selectedFile.name.split(".").pop()?.toLowerCase() || "mp4";
     setMediaType(ext);
-    extractMediaDuration(selectedFile);
 
     setIsUploading(true);
     setUploadProgress(10);
     setErrorMessage("");
 
-    // Setup abort controller for cancel button
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    // Progress simulation interval for backend processing
-    let simProgress = 10;
-    const progressInterval = setInterval(() => {
-      if (simProgress < 90) {
-        simProgress += Math.floor(Math.random() * 8) + 3;
-        setUploadProgress(Math.min(simProgress, 92));
-      }
-    }, 1200);
+    // Save controller for cancellation
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
-      const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY") || "";
-      const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN") || "";
-
-      const headers: Record<string, string> = { "Content-Type": "multipart/form-data" };
-      if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
-      if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
-
       const res = await axios.post(
         `${getApiBaseUrl()}/api/upload`,
         formData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
-            ...headers,
           },
-          signal: abortControllerRef.current.signal,
+          signal: controller.signal,
           onUploadProgress: (progressEvent) => {
-            const total = progressEvent.total || selectedFile.size;
-            const percent = Math.round((progressEvent.loaded * 100) / total);
-            // Cap upload progress at 65% since transcription pipeline follows
-            setUploadProgress(Math.min(65, percent));
+            if (progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              // Max 90% during actual upload, 100% when server responds
+              setUploadProgress(Math.min(percent, 90));
+            }
           },
         }
       );
 
-      clearInterval(progressInterval);
+      setTranscript(res.data.transcript || "");
+      setSttProvider(res.data.provider_used || "Groq Whisper Large-v3");
+      setSttFallback(res.data.fallback_applied || false);
       setUploadProgress(100);
 
-      setSttProvider(res.data.provider_used || "Speech Recognition");
-      setSttFallback(Boolean(res.data.fallback_applied));
-
-      // Short delay for smooth transition to step 2
+      // Auto advance to Step 2
       setTimeout(() => {
-        setTranscript(res.data.transcript || "");
-        setCurrentStep(2);
-        setMaxReachedStep((prev) => (prev < 2 ? 2 : prev));
         setIsUploading(false);
-      }, 400);
+        setCurrentStep(2);
+        setMaxReachedStep((prev) => Math.max(prev, 2) as StudioStep);
+      }, 500);
     } catch (err: unknown) {
-      clearInterval(progressInterval);
-      setIsUploading(false);
-
-      const axiosErr = err as AxiosError<{ detail?: string }>;
-
       if (axios.isCancel(err) || (err as Error).name === "CanceledError") {
-        setErrorMessage("Upload and transcription canceled.");
+        setIsUploading(false);
+        setUploadProgress(0);
         return;
       }
-
-      console.error("Upload error", err);
-      if (axiosErr.message === "Network Error" || axiosErr.code === "ERR_CONNECTION_REFUSED") {
-        setErrorMessage("Backend is offline. Please make sure FastAPI is running on port 8000.");
-      } else {
-        const detail = axiosErr.response?.data?.detail || axiosErr.message;
-        setErrorMessage("Failed to process media file: " + detail);
-      }
+      setIsUploading(false);
+      setUploadProgress(0);
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      const msg =
+        axiosErr.response?.data?.detail ||
+        axiosErr.message ||
+        "Upload failed. Please check your backend connection.";
+      setErrorMessage(msg);
     }
   }, []);
-
-  // Auto-pickup pending file from QuickDropzone
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const win = window as unknown as { __PENDING_SUMMARIZER_FILE__?: File | null };
-      if (win.__PENDING_SUMMARIZER_FILE__) {
-        const pendingFile = win.__PENDING_SUMMARIZER_FILE__;
-        win.__PENDING_SUMMARIZER_FILE__ = null;
-        const timer = setTimeout(() => {
-          void handleFileUpload(pendingFile);
-        }, 0);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [handleFileUpload]);
 
   const handleCancelUpload = () => {
     if (abortControllerRef.current) {
@@ -199,133 +138,126 @@ export default function SummarizerStudioPage() {
     setUploadProgress(0);
   };
 
-  const handleSummarize = async () => {
+  const handleSummarize = async (overridePrompt?: string) => {
+    if (!transcript) return;
     setIsSummarizing(true);
     setErrorMessage("");
 
+    // Step 3 to show progress
+    setCurrentStep(3);
+
+    const promptToSend = overridePrompt || customPrompt;
+
     try {
-      const savedGeminiKey = localStorage.getItem("SUMMAI_GEMINI_KEY") || "";
-      const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY") || "";
-      const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN") || "";
-
-      const headers: Record<string, string> = {};
-      if (savedGeminiKey) headers["x-gemini-api-key"] = savedGeminiKey;
-      if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
-      if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
-
       const res = await axios.post(
         `${getApiBaseUrl()}/api/summarize`,
         {
           raw_transcript: transcript,
-          filename: filename || "Manual Upload",
+          filename: filename || "Pasted-Transcript.txt",
           media_type: mediaType || "txt",
-          custom_prompt: customPrompt,
-        },
-        { headers }
+          custom_prompt: promptToSend || null,
+        }
       );
 
-      setSummary(res.data.summary || "");
-      setLlmProvider(res.data.provider_used || "AI Synthesis");
-      setLlmFallback(Boolean(res.data.fallback_applied));
+      setSummary(res.data.summary);
+      setLlmProvider(res.data.provider_used || "Google Gemini Flash");
+      setLlmFallback(res.data.fallback_applied || false);
 
-      setCurrentStep(4);
-      setMaxReachedStep(4);
+      // Advance to Step 4
+      setTimeout(() => {
+        setIsSummarizing(false);
+        setCurrentStep(4);
+        setMaxReachedStep(4);
+      }, 300);
     } catch (err: unknown) {
-      const axiosErr = err as AxiosError<{ detail?: string }>;
-      console.error("Summarize error", err);
-      if (axiosErr.message === "Network Error" || axiosErr.code === "ERR_CONNECTION_REFUSED") {
-        setErrorMessage("Backend is offline. Please make sure FastAPI is running on port 8000.");
-      } else {
-        const detail = axiosErr.response?.data?.detail || axiosErr.message;
-        setErrorMessage("Failed to synthesize summary: " + detail);
-      }
-    } finally {
       setIsSummarizing(false);
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      const msg =
+        axiosErr.response?.data?.detail ||
+        axiosErr.message ||
+        "Synthesis failed. Please verify your API Key in Settings.";
+      setErrorMessage(msg);
     }
   };
 
   const handleReset = () => {
+    setCurrentStep(1);
+    setMaxReachedStep(1);
     setFile(null);
     setFilename("");
     setFilesize("");
-    setDuration("00:15:00");
-    setMediaType("");
     setTranscript("");
     setCustomPrompt("");
     setSummary("");
+    setErrorMessage("");
     setSttProvider("");
     setSttFallback(false);
     setLlmProvider("");
     setLlmFallback(false);
-    setCurrentStep(1);
-    setMaxReachedStep(1);
-    setErrorMessage("");
-    setIsUploading(false);
-    setUploadProgress(0);
   };
 
-  const handleSelectRecentJob = (job: { filename: string; media_type?: string; raw_transcript?: string; summary?: string }) => {
+  const handleSelectRecentJob = (job: {
+    id: number;
+    filename: string;
+    media_type: string;
+    raw_transcript: string;
+    summary: string;
+  }) => {
     setFilename(job.filename);
-    setMediaType(job.media_type || "mp4");
-    setTranscript(job.raw_transcript || "");
-    setSummary(job.summary || "");
+    setMediaType(job.media_type);
+    setTranscript(job.raw_transcript);
+    setSummary(job.summary);
     setCurrentStep(4);
     setMaxReachedStep(4);
   };
 
-  const isKeyError =
-    errorMessage.toLowerCase().includes("key") ||
-    errorMessage.toLowerCase().includes("groq") ||
-    errorMessage.toLowerCase().includes("gemini");
+  const handleStepClick = (step: StudioStep) => {
+    if (step <= maxReachedStep) {
+      setCurrentStep(step);
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Stepper Indicator */}
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      {/* 4-Step Indicator */}
       <StepIndicator
         currentStep={currentStep}
         maxReachedStep={maxReachedStep}
-        onStepClick={(step) => setCurrentStep(step)}
+        onStepClick={handleStepClick}
       />
 
-      {/* Error alert toast */}
+      {/* Global Error Banner */}
       {errorMessage && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-4 animate-in fade-in">
-          <div className="flex items-center gap-2 min-w-0">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span className="truncate">{errorMessage}</span>
+        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3 text-rose-300 text-xs animate-in fade-in duration-200">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <span className="font-semibold text-rose-200">Pipeline Notice</span>
+            <p className="leading-relaxed">{errorMessage}</p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {isKeyError && (
-              <Link
-                href="/dashboard/settings"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 text-[11px] font-medium transition-colors"
-              >
-                <Settings className="w-3 h-3" />
-                <span>Configure Keys</span>
-              </Link>
-            )}
-            <button
-              onClick={() => setErrorMessage("")}
-              className="text-rose-400 hover:text-rose-200 text-xs underline"
+          <Link href="/dashboard/settings">
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-rose-500/30 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
             >
-              Dismiss
-            </button>
-          </div>
+              <Settings className="w-3 h-3" />
+              <span>Configure Keys</span>
+            </Button>
+          </Link>
         </div>
       )}
 
-      {/* STEP 1: Upload Media & Active Job Workspace */}
+      {/* STEP 1: Upload Media & Transcribe */}
       {currentStep === 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main Left Section: Upload Dropzone & Active Job (8 cols) */}
+          {/* Left Panel: Dropzone & Direct Mic (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
-            {/* New Meeting Dropzone Card */}
-            <div className="glass-card rounded-2xl p-6 sm:p-7 border border-slate-800/80 bg-slate-950/60 shadow-xl space-y-5">
-              <div className="space-y-1">
-                <h2 className="text-base font-bold text-white tracking-tight">
+            <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-5">
+              <div>
+                <h2 className="text-lg font-bold text-white tracking-tight">
                   New meeting
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 mt-0.5">
                   Upload a meeting recording or transcript to get started. No API keys required (auto-routes through free pool).
                 </p>
               </div>
@@ -363,7 +295,6 @@ export default function SummarizerStudioPage() {
                 />
 
                 <div className="flex flex-col items-center justify-center space-y-3.5">
-                  {/* Clean Upload Icon in Outline Frame */}
                   <div className="w-12 h-12 rounded-xl border border-slate-800 bg-slate-900/80 flex items-center justify-center text-emerald-400 shadow-sm">
                     <UploadCloud className="w-6 h-6" />
                   </div>
@@ -390,6 +321,12 @@ export default function SummarizerStudioPage() {
                   </p>
                 </div>
               </div>
+
+              {/* In-Browser Direct Voice Recording */}
+              <MicrophoneRecorder
+                onAudioRecorded={(recordedFile) => void handleFileUpload(recordedFile)}
+                disabled={isUploading}
+              />
             </div>
 
             {/* Active Job Processing Card (Shown when uploading/transcribing) */}
@@ -414,7 +351,7 @@ export default function SummarizerStudioPage() {
         </div>
       )}
 
-      {/* STEP 2: Review Raw Transcript */}
+      {/* STEP 2: Review Raw Transcript & Audio Player */}
       {currentStep === 2 && (
         <div className="space-y-4">
           {sttProvider && (
@@ -428,6 +365,12 @@ export default function SummarizerStudioPage() {
               )}
             </div>
           )}
+
+          {/* Interactive Audio Player if media was uploaded */}
+          {file && (
+            <AudioPlayerWidget audioFile={file} filename={filename} />
+          )}
+
           <TranscriptReviewer
             transcript={transcript}
             onChange={(val) => setTranscript(val)}
@@ -473,6 +416,7 @@ export default function SummarizerStudioPage() {
           )}
           <SummaryExporter
             summary={summary}
+            rawTranscript={transcript}
             filename={filename}
             onReset={handleReset}
           />
