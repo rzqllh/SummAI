@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { AuthModal } from "./AuthModal";
 
 interface AuthUser {
   email: string;
@@ -11,7 +12,8 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser;
   isLoggedIn: boolean;
-  loginWithGoogle: () => void;
+  openAuthModal: () => void;
+  closeAuthModal: () => void;
   logout: () => void;
   setUserWorkspace: (email: string, name?: string) => void;
 }
@@ -24,7 +26,8 @@ const DEFAULT_USER: AuthUser = {
 const AuthContext = createContext<AuthContextType>({
   user: DEFAULT_USER,
   isLoggedIn: false,
-  loginWithGoogle: () => {},
+  openAuthModal: () => {},
+  closeAuthModal: () => {},
   logout: () => {},
   setUserWorkspace: () => {},
 });
@@ -32,6 +35,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser>(DEFAULT_USER);
   const [isClient, setIsClient] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -62,21 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("SUMMAI_USER_EMAIL", cleanEmail);
       localStorage.setItem("SUMMAI_USER_NAME", cleanName);
       localStorage.removeItem("SUMMAI_USER_IMAGE");
-      // Trigger a storage event for all active components to refresh
       window.dispatchEvent(new Event("storage"));
-    }
-  };
-
-  const handleLoginGoogle = () => {
-    // Interactive Google account simulation & custom workspace prompt
-    const input = window.prompt(
-      "Enter your Google Email or Corporate Account to access your isolated workspace:\n(Each account has 100% isolated private transcripts & presets)",
-      user.email !== "default" ? user.email : "user@gmail.com"
-    );
-    if (input && input.trim()) {
-      const email = input.trim().toLowerCase();
-      const name = email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
-      handleSetUserWorkspace(email, name);
     }
   };
 
@@ -97,12 +87,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoggedIn,
-        loginWithGoogle: handleLoginGoogle,
+        openAuthModal: () => setIsModalOpen(true),
+        closeAuthModal: () => setIsModalOpen(false),
         logout: handleLogout,
         setUserWorkspace: handleSetUserWorkspace,
       }}
     >
       {children}
+      <AuthModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        currentEmail={user.email}
+        onSelectWorkspace={handleSetUserWorkspace}
+      />
     </AuthContext.Provider>
   );
 }
