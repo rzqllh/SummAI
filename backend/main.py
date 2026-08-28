@@ -190,6 +190,7 @@ async def summarize(
     x_gemini_api_key: Optional[str] = Header(None),
     x_groq_api_key: Optional[str] = Header(None),
     x_cf_api_token: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None),
 ):
     try:
         result = await generate_summary_with_fallback(
@@ -203,8 +204,9 @@ async def summarize(
         provider_used = result.get("provider", "Google Gemini Flash")
         fallback_applied = result.get("fallback_applied", False)
 
-        # Persist to local SQLite
-        await asyncio.to_thread(db.save_meeting, req.filename, req.media_type, req.raw_transcript, summary)
+        # Persist to local SQLite with user isolation
+        user_email = (x_user_email or "default").strip().lower()
+        await asyncio.to_thread(db.save_meeting, req.filename, req.media_type, req.raw_transcript, summary, user_email)
         
         return {
             "summary": summary,
@@ -218,21 +220,35 @@ async def summarize(
         raise HTTPException(status_code=500, detail=f"Failed to synthesize summary: {str(e)}")
 
 @app.get("/api/history")
-async def get_history(q: Optional[str] = None, type: Optional[str] = None):
-    meetings = await asyncio.to_thread(db.search_meetings, query=q or "", media_type=type or "")
+async def get_history(
+    q: Optional[str] = None,
+    type: Optional[str] = None,
+    x_user_email: Optional[str] = Header(None),
+):
+    user_email = (x_user_email or "default").strip().lower()
+    meetings = await asyncio.to_thread(db.search_meetings, query=q or "", media_type=type or "", user_email=user_email)
     return {"meetings": meetings}
 
 @app.delete("/api/history/{meeting_id}")
-async def delete_meeting_api(meeting_id: int):
-    await asyncio.to_thread(db.delete_meeting, meeting_id)
+async def delete_meeting_api(
+    meeting_id: int,
+    x_user_email: Optional[str] = Header(None),
+):
+    user_email = (x_user_email or "default").strip().lower()
+    await asyncio.to_thread(db.delete_meeting, meeting_id, user_email=user_email)
     return {"status": "success", "id": meeting_id}
 
 @app.get("/api/stats")
-async def get_stats_api():
-    return await asyncio.to_thread(db.get_stats)
+async def get_stats_api(
+    x_user_email: Optional[str] = Header(None),
+):
+    user_email = (x_user_email or "default").strip().lower()
+    return await asyncio.to_thread(db.get_stats, user_email=user_email)
 
 @app.get("/api/presets")
-async def get_presets():
+async def get_presets(
+    x_user_email: Optional[str] = Header(None),
+):
     builtin = [
         {
             "id": "mom",
@@ -415,11 +431,15 @@ Do not add a meeting summary.""",
             "custom": False,
         },
     ]
-    custom = await asyncio.to_thread(db.get_custom_presets)
+    user_email = (x_user_email or "default").strip().lower()
+    custom = await asyncio.to_thread(db.get_custom_presets, user_email=user_email)
     return {"presets": builtin + custom}
 
 @app.post("/api/presets", status_code=201)
-async def create_preset(req: CreatePresetRequest):
+async def create_preset(
+    req: CreatePresetRequest,
+    x_user_email: Optional[str] = Header(None),
+):
     title = req.title.strip()
     prompt = req.prompt.strip()
     if not title or not prompt:
@@ -428,16 +448,21 @@ async def create_preset(req: CreatePresetRequest):
         raise HTTPException(status_code=400, detail="title must be 150 characters or fewer")
     if len(prompt) > 10000:
         raise HTTPException(status_code=400, detail="prompt must be 10000 characters or fewer")
-    preset = await asyncio.to_thread(db.save_custom_preset, title, prompt)
+    user_email = (x_user_email or "default").strip().lower()
+    preset = await asyncio.to_thread(db.save_custom_preset, title, prompt, user_email=user_email)
     return {"preset": preset}
 
 @app.delete("/api/presets/{preset_id}")
-async def delete_preset(preset_id: str):
+async def delete_preset(
+    preset_id: str,
+    x_user_email: Optional[str] = Header(None),
+):
     if not preset_id.startswith("custom_"):
         raise HTTPException(status_code=400, detail="Built-in presets cannot be deleted")
     try:
         db_id = int(preset_id.replace("custom_", ""))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid preset id")
-    await asyncio.to_thread(db.delete_custom_preset, db_id)
+    user_email = (x_user_email or "default").strip().lower()
+    await asyncio.to_thread(db.delete_custom_preset, db_id, user_email=user_email)
     return {"status": "deleted", "id": preset_id}

@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { Menu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { UserNav } from "@/components/auth/UserNav";
+
 interface HeaderProps {
   onOpenMobileMenu: () => void;
 }
@@ -74,7 +76,7 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
         </div>
       </div>
 
-      {/* Action buttons & system health */}
+      {/* Action buttons, system health, and User Authentication */}
       <div className="flex items-center gap-3">
         {/* Engine status indicator */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
@@ -86,6 +88,9 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             Local SQLite <span className="text-slate-600">|</span> Groq STT
           </span>
         </div>
+
+        {/* User Auth Profile Dropdown */}
+        <UserNav />
 
         <Link href="/dashboard/summarizer">
           <Button
