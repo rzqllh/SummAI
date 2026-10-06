@@ -27,7 +27,7 @@ import { MicrophoneRecorder } from "@/components/studio/MicrophoneRecorder";
 import { BatchProcessingModal } from "@/components/studio/BatchProcessingModal";
 import { uploadFileInChunks } from "@/lib/chunkUpload";
 import { saveStudioDraft, getStudioDraft, clearStudioDraft, StudioDraft } from "@/lib/draftStorage";
-import { getApiBaseUrl } from "@/lib/api";
+import { getApiBaseUrl, getCurrentUserEmail } from "@/lib/api";
 
 export default function SummarizerStudioPage() {
   const [currentStep, setCurrentStep] = useState<StudioStep>(1);
@@ -42,7 +42,7 @@ export default function SummarizerStudioPage() {
   const [filename, setFilename] = useState("");
   const [title, setTitle] = useState("");
   const [filesize, setFilesize] = useState("");
-  const duration = "00:15:00";
+  const [duration, setDuration] = useState("Estimating...");
   const [mediaType, setMediaType] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -56,9 +56,16 @@ export default function SummarizerStudioPage() {
   const [streamedText, setStreamedText] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(() => {
-    return getStudioDraft();
-  });
+  const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(null);
+
+  // Restore draft client-side after mount to prevent SSR hydration mismatch
+  useEffect(() => {
+    const draft = getStudioDraft();
+    if (draft) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Client-only hydration restore: draft is stored in localStorage which is unavailable during SSR
+      setRecoveredDraft(draft);
+    }
+  }, []);
 
   // Provider tracking state
   const [sttProvider, setSttProvider] = useState("");
@@ -110,6 +117,31 @@ export default function SummarizerStudioPage() {
     const ext = selectedFile.name.split(".").pop()?.toLowerCase() || "mp4";
     setMediaType(ext);
 
+    // Calculate actual audio/video duration client-side from file metadata
+    setDuration("Estimating...");
+    if (typeof window !== "undefined" && (selectedFile.type.startsWith("audio/") || selectedFile.type.startsWith("video/") || /\.(mp3|wav|m4a|mp4|mov|webm)$/i.test(selectedFile.name))) {
+      try {
+        const mediaEl = document.createElement(selectedFile.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(selectedFile.name) ? "video" : "audio");
+        mediaEl.preload = "metadata";
+        mediaEl.onloadedmetadata = () => {
+          URL.revokeObjectURL(mediaEl.src);
+          const secs = Math.floor(mediaEl.duration);
+          if (!isNaN(secs) && isFinite(secs)) {
+            const hrs = Math.floor(secs / 3600);
+            const mins = Math.floor((secs % 3600) / 60);
+            const s = secs % 60;
+            setDuration(`${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+          }
+        };
+        mediaEl.onerror = () => {
+          URL.revokeObjectURL(mediaEl.src);
+        };
+        mediaEl.src = URL.createObjectURL(selectedFile);
+      } catch {
+        // Fallback gracefully if object URL creation fails
+      }
+    }
+
     setIsUploading(true);
     setUploadProgress(5);
     setErrorMessage("");
@@ -143,14 +175,28 @@ export default function SummarizerStudioPage() {
       }
       setIsUploading(false);
       setUploadProgress(0);
-      const axiosErr = err as AxiosError<{ detail?: string }>;
+      const axiosErr = err as AxiosError<{ detail?: string; error?: { message?: string } }>;
       const msg =
+        axiosErr.response?.data?.error?.message ||
         axiosErr.response?.data?.detail ||
         axiosErr.message ||
         "Upload failed. Please check your backend connection.";
       setErrorMessage(msg);
     }
   }, []);
+
+  // Consume pending file transferred from QuickDropzone on mount (BUG-04)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const win = window as unknown as { __PENDING_SUMMARIZER_FILE__?: File };
+      if (win.__PENDING_SUMMARIZER_FILE__) {
+        const pendingFile = win.__PENDING_SUMMARIZER_FILE__;
+        win.__PENDING_SUMMARIZER_FILE__ = undefined;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- External navigation handoff: consume one-time pending file uploaded via QuickDropzone
+        void handleFileUpload(pendingFile);
+      }
+    }
+  }, [handleFileUpload]);
 
   const handleCancelUpload = () => {
     if (abortControllerRef.current) {
@@ -191,6 +237,7 @@ export default function SummarizerStudioPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-user-email": getCurrentUserEmail(),
           ...(savedGemini ? { "x-gemini-api-key": savedGemini } : {}),
           ...(savedGroq ? { "x-groq-api-key": savedGroq } : {}),
           ...(savedCf ? { "x-cf-api-token": savedCf } : {}),

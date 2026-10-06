@@ -1,5 +1,5 @@
 import axios, { AxiosProgressEvent } from "axios";
-import { getApiBaseUrl } from "./api";
+import { getApiBaseUrl, getApiHeaders } from "./api";
 
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per chunk
 
@@ -38,7 +38,7 @@ export async function uploadFileInChunks({
     formData.append("file", file);
 
     const res = await axios.post(`${getApiBaseUrl()}/api/upload`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: getApiHeaders({ "Content-Type": "multipart/form-data" }),
       signal,
       onUploadProgress: (progressEvent: AxiosProgressEvent) => {
         if (progressEvent.total && onProgress) {
@@ -61,7 +61,7 @@ export async function uploadFileInChunks({
       media_type: ext,
       total_chunks: totalChunks,
     },
-    { signal }
+    { headers: getApiHeaders(), signal }
   );
 
   const uploadId = initRes.data.upload_id;
@@ -107,7 +107,7 @@ export async function uploadFileInChunks({
     const completeRes = await axios.post(
       `${getApiBaseUrl()}/api/uploads/${uploadId}/complete`,
       {},
-      { signal }
+      { headers: getApiHeaders(), signal }
     );
 
     if (onProgress) onProgress(100);
@@ -115,7 +115,7 @@ export async function uploadFileInChunks({
   } catch (err) {
     // Clean up on server if aborted or failed
     try {
-      await axios.delete(`${getApiBaseUrl()}/api/uploads/${uploadId}`);
+      await axios.delete(`${getApiBaseUrl()}/api/uploads/${uploadId}`, { headers: getApiHeaders() });
     } catch {}
     throw err;
   }

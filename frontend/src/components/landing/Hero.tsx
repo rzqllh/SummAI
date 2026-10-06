@@ -60,7 +60,7 @@ export function Hero() {
               </Button>
             </Link>
 
-            <Link href="#before-after" className="w-full sm:w-auto">
+            <Link href="#comparison" className="w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="lg"
@@ -93,18 +93,18 @@ export function Hero() {
           <div className="rounded-2xl bg-slate-950 border border-slate-800/80 overflow-hidden">
             {/* Mockup Window Bar - neutral dots */}
             <div className="px-4 py-3 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                <span className="ml-2 text-xs font-mono text-slate-400">
+              <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0" />
+                <span className="ml-2 text-xs font-mono text-slate-400 truncate">
                   sprint-retrospective-q3.mp4 • Synthesized via Gemini Flash
                 </span>
               </div>
               <button
                 type="button"
                 onClick={copyHeroSummary}
-                className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1.5 py-0.5"
+                className="shrink-0 flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1.5 py-0.5"
               >
                 {copied ? (
                   <>

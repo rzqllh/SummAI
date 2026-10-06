@@ -105,6 +105,12 @@ class GroqSTTProvider(BaseSTTProvider):
         except Exception as e:
             return {"valid": False, "message": f"Groq Error: {str(e)}"}
 
+GROQ_LLM_CANDIDATE_MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+]
+
 class GroqLLMProvider(BaseLLMProvider):
     @property
     def name(self) -> str:
@@ -116,12 +122,7 @@ class GroqLLMProvider(BaseLLMProvider):
             raise ProviderAuthError("GROQ_API_KEY is not configured.", provider_name=self.name)
 
         client = Groq(api_key=key.strip())
-        candidate_models = [
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b",
-            "qwen/qwen3.8-27b",
-            "groq/compound",
-        ]
+        candidate_models = GROQ_LLM_CANDIDATE_MODELS
         last_error = None
 
         def _do_chat(m: str):
@@ -172,13 +173,7 @@ class GroqLLMProvider(BaseLLMProvider):
             raise ProviderAuthError("GROQ_API_KEY is not configured.", provider_name=self.name)
 
         client = Groq(api_key=key.strip())
-        candidate_models = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-specdec",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it",
-        ]
+        candidate_models = GROQ_LLM_CANDIDATE_MODELS
         last_error = None
 
         for model_id in candidate_models:

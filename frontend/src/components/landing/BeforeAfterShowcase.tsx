@@ -115,11 +115,11 @@ Sinkronisasi status Sprint 24: Integrasi Frontend Auth menunggu update dokumenta
         <div className="max-w-4xl mx-auto rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden shadow-xl">
           {activeView === "raw" ? (
             <div className="flex flex-col">
-              <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-300 font-mono">
+              <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-300 font-mono truncate">
                   Raw Transcript (Unstructured & Verbose)
                 </span>
-                <span className="font-mono text-slate-400 text-[11px]">
+                <span className="font-mono text-slate-400 text-[11px] shrink-0">
                   125 words • 4 speaker turns
                 </span>
               </div>
@@ -129,16 +129,16 @@ Sinkronisasi status Sprint 24: Integrasi Frontend Auth menunggu update dokumenta
             </div>
           ) : (
             <div className="flex flex-col">
-              <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-emerald-400">
+              <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-emerald-400 truncate">
                     Preset: Action Items & Tasks • Ready to export
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-emerald-300 transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-2 py-1 bg-slate-800/60 border border-slate-700/60"
+                  className="shrink-0 self-start sm:self-auto flex items-center gap-1.5 text-xs text-slate-300 hover:text-emerald-300 transition-all duration-150 ease-out hover:-translate-y-px active:translate-y-0 focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-2 py-1 bg-slate-800/60 border border-slate-700/60"
                 >
                   {copied ? (
                     <>
@@ -181,7 +181,7 @@ Sinkronisasi status Sprint 24: Integrasi Frontend Auth menunggu update dokumenta
                   <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 font-mono">
                     📝 Action Items & To-Do List
                   </div>
-                  <div className="rounded-lg border border-slate-800 overflow-hidden bg-slate-900/60">
+                  <div className="rounded-lg border border-slate-800 overflow-x-auto bg-slate-900/60">
                     <table className="w-full text-left text-[11px]">
                       <thead className="bg-slate-800/80 text-slate-400 font-semibold border-b border-slate-800 font-mono">
                         <tr>

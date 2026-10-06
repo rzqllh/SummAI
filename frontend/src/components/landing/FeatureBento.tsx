@@ -96,16 +96,16 @@ export function FeatureBento() {
 
               {/* Stat Rows as Label/Value Pairs */}
               <div className="divide-y divide-slate-800/80 border-t border-slate-800/80 pt-1 text-xs">
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-400 font-medium">Throughput</span>
-                  <span className="text-emerald-400 font-mono font-semibold">~350 words / sec</span>
+                <div className="py-2.5 flex items-center justify-between gap-2">
+                  <span className="text-slate-400 font-medium shrink-0">Throughput</span>
+                  <span className="text-emerald-400 font-mono font-semibold text-right">~350 words / sec</span>
                 </div>
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-400 font-medium">Models</span>
+                <div className="py-2.5 flex items-center justify-between gap-2">
+                  <span className="text-slate-400 font-medium shrink-0">Models</span>
                   <span className="text-slate-200 font-mono text-right">Whisper Large v3 + Gemini Flash</span>
                 </div>
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-400 font-medium">Language handling</span>
+                <div className="py-2.5 flex items-center justify-between gap-2">
+                  <span className="text-slate-400 font-medium shrink-0">Language handling</span>
                   <span className="text-slate-200 font-mono text-right">Indonesian & English mixed</span>
                 </div>
               </div>

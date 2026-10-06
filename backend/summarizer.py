@@ -39,17 +39,16 @@ async def transcribe_audio_with_fallback(
     
     stt_candidates = []
     
-    # Check if Groq key exists
-    has_groq = bool(custom_groq_key or os.environ.get("GROQ_API_KEY"))
-    if has_groq:
-        stt_candidates.append((groq_stt, custom_groq_key))
+    server_groq_key = os.environ.get("GROQ_API_KEY")
+    if custom_groq_key and custom_groq_key.strip():
+        stt_candidates.append((groq_stt, custom_groq_key.strip()))
+        if server_groq_key and server_groq_key.strip() != custom_groq_key.strip():
+            stt_candidates.append((groq_stt, server_groq_key.strip()))
+    elif server_groq_key and server_groq_key.strip():
+        stt_candidates.append((groq_stt, server_groq_key.strip()))
     
     # Always append Cloudflare as fallback or primary zero-config
     stt_candidates.append((cloudflare_stt, custom_cf_token))
-    
-    # If no Groq key, also try Groq last just in case
-    if not has_groq:
-        stt_candidates.append((groq_stt, None))
 
     errors_encountered: List[str] = []
     fallback_applied = False
@@ -138,23 +137,25 @@ async def generate_summary_with_fallback(
     llm_candidates = []
 
     # Priority 1: Gemini
-    has_gemini = bool(custom_gemini_key or os.environ.get("GEMINI_API_KEY"))
-    if has_gemini:
-        llm_candidates.append((gemini_llm, custom_gemini_key))
+    server_gemini_key = os.environ.get("GEMINI_API_KEY")
+    if custom_gemini_key and custom_gemini_key.strip():
+        llm_candidates.append((gemini_llm, custom_gemini_key.strip()))
+        if server_gemini_key and server_gemini_key.strip() != custom_gemini_key.strip():
+            llm_candidates.append((gemini_llm, server_gemini_key.strip()))
+    elif server_gemini_key and server_gemini_key.strip():
+        llm_candidates.append((gemini_llm, server_gemini_key.strip()))
 
     # Priority 2: Groq Llama 3.3
-    has_groq = bool(custom_groq_key or os.environ.get("GROQ_API_KEY"))
-    if has_groq:
-        llm_candidates.append((groq_llm, custom_groq_key))
+    server_groq_key = os.environ.get("GROQ_API_KEY")
+    if custom_groq_key and custom_groq_key.strip():
+        llm_candidates.append((groq_llm, custom_groq_key.strip()))
+        if server_groq_key and server_groq_key.strip() != custom_groq_key.strip():
+            llm_candidates.append((groq_llm, server_groq_key.strip()))
+    elif server_groq_key and server_groq_key.strip():
+        llm_candidates.append((groq_llm, server_groq_key.strip()))
 
     # Priority 3: Cloudflare Workers AI
     llm_candidates.append((cloudflare_llm, custom_cf_token))
-
-    # If Gemini wasn't tested first, test as final candidate
-    if not has_gemini:
-        llm_candidates.append((gemini_llm, None))
-    if not has_groq:
-        llm_candidates.append((groq_llm, None))
 
     errors_encountered: List[str] = []
     fallback_applied = False
@@ -229,20 +230,23 @@ TRANSCRIPT CONTENT:
 """
 
     llm_candidates = []
-    has_gemini = bool(custom_gemini_key or os.environ.get("GEMINI_API_KEY"))
-    if has_gemini:
-        llm_candidates.append((gemini_llm, custom_gemini_key))
+    server_gemini_key = os.environ.get("GEMINI_API_KEY")
+    if custom_gemini_key and custom_gemini_key.strip():
+        llm_candidates.append((gemini_llm, custom_gemini_key.strip()))
+        if server_gemini_key and server_gemini_key.strip() != custom_gemini_key.strip():
+            llm_candidates.append((gemini_llm, server_gemini_key.strip()))
+    elif server_gemini_key and server_gemini_key.strip():
+        llm_candidates.append((gemini_llm, server_gemini_key.strip()))
 
-    has_groq = bool(custom_groq_key or os.environ.get("GROQ_API_KEY"))
-    if has_groq:
-        llm_candidates.append((groq_llm, custom_groq_key))
+    server_groq_key = os.environ.get("GROQ_API_KEY")
+    if custom_groq_key and custom_groq_key.strip():
+        llm_candidates.append((groq_llm, custom_groq_key.strip()))
+        if server_groq_key and server_groq_key.strip() != custom_groq_key.strip():
+            llm_candidates.append((groq_llm, server_groq_key.strip()))
+    elif server_groq_key and server_groq_key.strip():
+        llm_candidates.append((groq_llm, server_groq_key.strip()))
 
     llm_candidates.append((cloudflare_llm, custom_cf_token))
-
-    if not has_gemini:
-        llm_candidates.append((gemini_llm, None))
-    if not has_groq:
-        llm_candidates.append((groq_llm, None))
 
     errors_encountered = []
     fallback_applied = False

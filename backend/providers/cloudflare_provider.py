@@ -15,14 +15,18 @@ logger = logging.getLogger(__name__)
 
 CF_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
 
+def _get_cf_credentials(api_key: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or os.environ.get("CF_ACCOUNT_ID")
+    api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CF_API_TOKEN")
+    return account_id, api_token
+
 class CloudflareSTTProvider(BaseSTTProvider):
     @property
     def name(self) -> str:
         return "Cloudflare Workers AI (Whisper)"
 
     async def transcribe(self, audio_file_path: str, api_key: Optional[str] = None, language: Optional[str] = None) -> str:
-        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+        account_id, api_token = _get_cf_credentials(api_key)
 
         if not account_id or not api_token:
             raise ProviderAuthError("Cloudflare Account ID or API Token is not configured.", provider_name=self.name)
@@ -60,8 +64,7 @@ class CloudflareSTTProvider(BaseSTTProvider):
             raise ProviderError(f"Cloudflare Whisper request failed: {e}", provider_name=self.name)
 
     async def test_connection(self, api_key: Optional[str] = None) -> Dict[str, Any]:
-        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+        account_id, api_token = _get_cf_credentials(api_key)
         if not account_id or not api_token:
             return {"valid": False, "message": "Cloudflare credentials not configured in host environment."}
         return {"valid": True, "message": "Cloudflare Workers AI is ready as zero-config fallback."}
@@ -72,8 +75,7 @@ class CloudflareLLMProvider(BaseLLMProvider):
         return "Cloudflare Workers AI (Llama 3.3 70B)"
 
     async def generate(self, prompt: str, api_key: Optional[str] = None, temperature: float = 0.2) -> str:
-        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+        account_id, api_token = _get_cf_credentials(api_key)
 
         if not account_id or not api_token:
             raise ProviderAuthError("Cloudflare Account ID or API Token is not configured.", provider_name=self.name)
@@ -121,8 +123,7 @@ class CloudflareLLMProvider(BaseLLMProvider):
             raise ProviderError(f"Cloudflare LLM request failed: {e}", provider_name=self.name)
 
     async def generate_stream(self, prompt: str, api_key: Optional[str] = None, temperature: float = 0.2):
-        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+        account_id, api_token = _get_cf_credentials(api_key)
 
         if not account_id or not api_token:
             raise ProviderAuthError("Cloudflare Account ID or API Token is not configured.", provider_name=self.name)
@@ -171,8 +172,7 @@ class CloudflareLLMProvider(BaseLLMProvider):
             raise ProviderError(f"Cloudflare streaming error: {e}", provider_name=self.name)
 
     async def test_connection(self, api_key: Optional[str] = None) -> Dict[str, Any]:
-        account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
-        api_token = api_key or os.environ.get("CLOUDFLARE_API_TOKEN")
+        account_id, api_token = _get_cf_credentials(api_key)
         if not account_id or not api_token:
             return {"valid": False, "message": "Cloudflare credentials not configured in host environment."}
         return {"valid": True, "message": "Cloudflare LLM is ready as zero-config fallback."}

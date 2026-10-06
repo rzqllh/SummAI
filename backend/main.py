@@ -1197,3 +1197,79 @@ async def send_to_notion(
     raise SummAIException(ErrorCode.UPLOAD_INVALID, "Either Notion API Token + Parent ID or a valid Webhook URL is required.", status_code=400)
 
 
+# --- SETTINGS / API KEYS TESTS ---
+
+class TestAPIKeyRequest(BaseModel):
+    api_key: Optional[str] = None
+
+@app.get("/api/settings/keys")
+async def get_settings_keys():
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    cf_token = os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CF_API_TOKEN", "")
+    
+    return {
+        "groq_configured": bool(groq_key),
+        "gemini_configured": bool(gemini_key),
+        "cloudflare_configured": bool(cf_token),
+        "groq_preview": f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else ("***" if groq_key else ""),
+        "gemini_preview": f"{gemini_key[:6]}...{gemini_key[-4:]}" if len(gemini_key) > 10 else ("***" if gemini_key else ""),
+        "cloudflare_preview": f"{cf_token[:6]}...{cf_token[-4:]}" if len(cf_token) > 10 else ("***" if cf_token else ""),
+    }
+
+@app.post("/api/settings/test-groq")
+async def test_groq_key(req: TestAPIKeyRequest):
+    key = req.api_key or os.environ.get("GROQ_API_KEY")
+    if not key:
+        return {"valid": False, "message": "No Groq API key provided."}
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {key}"}
+            )
+            if resp.status_code == 200:
+                return {"valid": True, "message": "Successfully connected to Groq API."}
+            else:
+                return {"valid": False, "message": f"Groq API returned HTTP {resp.status_code}: {resp.text}"}
+    except Exception as e:
+        return {"valid": False, "message": f"Failed to connect: {str(e)}"}
+
+@app.post("/api/settings/test-gemini")
+async def test_gemini_key(req: TestAPIKeyRequest):
+    key = req.api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return {"valid": False, "message": "No Gemini API key provided."}
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
+            )
+            if resp.status_code == 200:
+                return {"valid": True, "message": "Successfully connected to Google Gemini API."}
+            else:
+                return {"valid": False, "message": f"Gemini API returned HTTP {resp.status_code}: {resp.text}"}
+    except Exception as e:
+        return {"valid": False, "message": f"Failed to connect: {str(e)}"}
+
+@app.post("/api/settings/test-cloudflare")
+async def test_cf_key(req: TestAPIKeyRequest):
+    key = req.api_key or os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CF_API_TOKEN")
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID") or os.environ.get("CF_ACCOUNT_ID")
+    if not key or not account_id:
+        return {"valid": False, "message": "Cloudflare Token or Account ID missing."}
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/models",
+                headers={"Authorization": f"Bearer {key}"}
+            )
+            if resp.status_code == 200:
+                return {"valid": True, "message": "Successfully connected to Cloudflare Workers AI."}
+            else:
+                return {"valid": False, "message": f"Cloudflare API returned HTTP {resp.status_code}: {resp.text}"}
+    except Exception as e:
+        return {"valid": False, "message": f"Failed to connect: {str(e)}"}
