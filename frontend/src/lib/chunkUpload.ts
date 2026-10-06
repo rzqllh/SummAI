@@ -5,6 +5,7 @@ const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB per chunk
 
 interface ChunkUploadOptions {
   file: File;
+  language?: string;
   onProgress?: (progress: number) => void;
   signal?: AbortSignal;
 }
@@ -26,19 +27,25 @@ export interface ChunkUploadResult {
 
 export async function uploadFileInChunks({
   file,
+  language,
   onProgress,
   signal,
 }: ChunkUploadOptions): Promise<ChunkUploadResult> {
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
   const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
+  const targetLang = language || (typeof window !== "undefined" ? localStorage.getItem("SUMMAI_TRANSCRIPTION_LANG") || "id" : "id");
 
   // For small files (< 6MB) or text files, send direct to fast upload endpoint
   if (file.size < 6 * 1024 * 1024 || ext === "txt") {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("language", targetLang);
 
     const res = await axios.post(`${getApiBaseUrl()}/api/upload`, formData, {
-      headers: getApiHeaders({ "Content-Type": "multipart/form-data" }),
+      headers: getApiHeaders({
+        "Content-Type": "multipart/form-data",
+        "x-transcription-language": targetLang,
+      }),
       signal,
       onUploadProgress: (progressEvent: AxiosProgressEvent) => {
         if (progressEvent.total && onProgress) {
@@ -107,7 +114,7 @@ export async function uploadFileInChunks({
     const completeRes = await axios.post(
       `${getApiBaseUrl()}/api/uploads/${uploadId}/complete`,
       {},
-      { headers: getApiHeaders(), signal }
+      { headers: getApiHeaders({ "x-transcription-language": targetLang }), signal }
     );
 
     if (onProgress) onProgress(100);

@@ -32,12 +32,13 @@ chunk_*
 *.mp4
 *.mov
 
-# Next.js / Node
+# Next.js / Node / Cloudflare
 node_modules/
 .next/
 out/
 build/
 dist/
+.wrangler/
 
 # IDE / System
 .DS_Store

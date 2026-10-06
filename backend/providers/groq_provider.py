@@ -38,8 +38,11 @@ class GroqSTTProvider(BaseSTTProvider):
                     "model": "whisper-large-v3",
                     "response_format": "verbose_json",
                 }
-                if language:
-                    kwargs["language"] = language
+                if language and str(language).lower() != "auto":
+                    clean_lang = str(language).lower().strip()
+                    kwargs["language"] = clean_lang
+                    if clean_lang == "id":
+                        kwargs["prompt"] = "Transkrip rapat teknis, infrastruktur jaringan, IT, cloud, port, QSFP, Metro, Vlan, IP, site Jabo, Bekasi, Bogor, konfigurasi."
                 
                 response = client.audio.transcriptions.create(**kwargs)
             

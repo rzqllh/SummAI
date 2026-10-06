@@ -12,6 +12,7 @@ import {
   Zap,
   Cloud,
   FileText,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator, StudioStep } from "@/components/studio/StepIndicator";
@@ -47,6 +48,7 @@ export default function SummarizerStudioPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [transcriptionLang, setTranscriptionLang] = useState("id");
 
   // Studio payload state
   const [transcript, setTranscript] = useState("");
@@ -58,12 +60,16 @@ export default function SummarizerStudioPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [recoveredDraft, setRecoveredDraft] = useState<StudioDraft | null>(null);
 
-  // Restore draft client-side after mount to prevent SSR hydration mismatch
+  // Restore draft and audio language client-side after mount
   useEffect(() => {
     const draft = getStudioDraft();
     if (draft) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Client-only hydration restore: draft is stored in localStorage which is unavailable during SSR
       setRecoveredDraft(draft);
+    }
+    const savedLang = localStorage.getItem("SUMMAI_TRANSCRIPTION_LANG");
+    if (savedLang) {
+      setTranscriptionLang(savedLang);
     }
   }, []);
 
@@ -152,6 +158,7 @@ export default function SummarizerStudioPage() {
     try {
       const res = await uploadFileInChunks({
         file: selectedFile,
+        language: transcriptionLang,
         onProgress: (percent) => setUploadProgress(percent),
         signal: controller.signal,
       });
@@ -183,7 +190,7 @@ export default function SummarizerStudioPage() {
         "Upload failed. Please check your backend connection.";
       setErrorMessage(msg);
     }
-  }, []);
+  }, [transcriptionLang]);
 
   // Consume pending file transferred from QuickDropzone on mount (BUG-04)
   useEffect(() => {
@@ -413,13 +420,47 @@ export default function SummarizerStudioPage() {
           {/* Left Panel: Dropzone & Direct Mic (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
             <div className="glass-card rounded-2xl p-6 border border-slate-800 space-y-5">
-              <div>
-                <h2 className="text-lg font-bold text-white tracking-tight">
-                  New meeting
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Upload a meeting recording or transcript to get started. No API keys required (auto-routes through free pool).
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">
+                    New meeting
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Upload a meeting recording or transcript to get started. No API keys required.
+                  </p>
+                </div>
+
+                {/* Transcription Language Selector */}
+                <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
+                  <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-[11px] font-medium text-slate-400">Audio:</span>
+                  <select
+                    value={transcriptionLang}
+                    onChange={(e) => {
+                      const nextLang = e.target.value;
+                      setTranscriptionLang(nextLang);
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("SUMMAI_TRANSCRIPTION_LANG", nextLang);
+                      }
+                    }}
+                    className="bg-transparent text-xs font-semibold text-emerald-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="id" className="bg-slate-950 text-slate-200">🇮🇩 Bahasa Indonesia (Rekomendasi)</option>
+                    <option value="en" className="bg-slate-950 text-slate-200">🇺🇸 English</option>
+                    <option value="auto" className="bg-slate-950 text-slate-200">🌐 Auto Detect</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                <span>
+                  {transcriptionLang === "id"
+                    ? "Mode Indonesia aktif: Kosakata IT, port, QSFP, VLAN, dan infra network dilindungi dari salah deteksi bahasa."
+                    : transcriptionLang === "en"
+                    ? "English mode active: Optimized for international English business meetings."
+                    : "Auto detect active: Whisper menebak bahasa secara otomatis."}
+                </span>
               </div>
 
               {/* Dotted Upload Dropzone */}

@@ -30,10 +30,12 @@ export function getApiHeaders(extraHeaders: Record<string, string> = {}): Record
     const savedGeminiKey = localStorage.getItem("SUMMAI_GEMINI_KEY");
     const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY");
     const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN");
+    const savedLang = localStorage.getItem("SUMMAI_TRANSCRIPTION_LANG") || "id";
 
     if (savedGeminiKey) headers["x-gemini-api-key"] = savedGeminiKey;
     if (savedGroqKey) headers["x-groq-api-key"] = savedGroqKey;
     if (savedCfToken) headers["x-cf-api-token"] = savedCfToken;
+    if (savedLang) headers["x-transcription-language"] = savedLang;
   }
 
   return headers;
@@ -49,6 +51,7 @@ if (typeof window !== "undefined") {
     const savedGeminiKey = localStorage.getItem("SUMMAI_GEMINI_KEY");
     const savedGroqKey = localStorage.getItem("SUMMAI_GROQ_KEY");
     const savedCfToken = localStorage.getItem("SUMMAI_CF_TOKEN");
+    const savedLang = localStorage.getItem("SUMMAI_TRANSCRIPTION_LANG") || "id";
 
     if (savedGeminiKey && !config.headers["x-gemini-api-key"]) {
       config.headers["x-gemini-api-key"] = savedGeminiKey;
@@ -58,6 +61,9 @@ if (typeof window !== "undefined") {
     }
     if (savedCfToken && !config.headers["x-cf-api-token"]) {
       config.headers["x-cf-api-token"] = savedCfToken;
+    }
+    if (savedLang && !config.headers["x-transcription-language"]) {
+      config.headers["x-transcription-language"] = savedLang;
     }
 
     return config;

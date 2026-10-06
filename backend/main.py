@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Request, Response
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -262,9 +262,12 @@ async def complete_chunk_upload(
     x_groq_api_key: Optional[str] = Header(None),
     x_cf_api_token: Optional[str] = Header(None),
     x_user_email: Optional[str] = Header(None),
+    x_transcription_language: Optional[str] = Header(None),
 ):
     limiter.check_rate_limit("transcription", get_client_identifier(request), max_requests=10, window_seconds=60)
     user_email = (x_user_email or "default").strip().lower()
+    raw_lang = (x_transcription_language or "id").strip().lower()
+    target_language = None if raw_lang == "auto" else raw_lang
     session = db.get_upload_session(upload_id, user_email=user_email)
     if not session:
         raise SummAIException(ErrorCode.NOT_FOUND, "Upload session not found.", status_code=404)
@@ -318,6 +321,7 @@ async def complete_chunk_upload(
                 chunk,
                 custom_groq_key=x_groq_api_key,
                 custom_cf_token=x_cf_api_token,
+                language=target_language,
             )
             full_transcript.append(result["transcript"])
             for seg in result.get("segments", []):
@@ -368,10 +372,14 @@ async def cancel_chunk_upload(
 async def upload_audio(
     request: Request,
     file: UploadFile = File(...),
+    language: Optional[str] = Form("id"),
     x_groq_api_key: Optional[str] = Header(None),
     x_cf_api_token: Optional[str] = Header(None),
+    x_transcription_language: Optional[str] = Header(None),
 ):
     limiter.check_rate_limit("direct_upload", get_client_identifier(request), max_requests=20, window_seconds=60)
+    raw_lang = (x_transcription_language or language or "id").strip().lower()
+    target_language = None if raw_lang == "auto" else raw_lang
     if not file.filename:
         raise SummAIException(ErrorCode.UPLOAD_INVALID, "No file sent.", status_code=400)
 
@@ -393,7 +401,12 @@ async def upload_audio(
             chunks = await asyncio.to_thread(process_and_chunk_audio, audio_path, 20 * 60 * 1000, job_dir)
             full_transcript = []
             for chunk in chunks:
-                result = await transcribe_audio_with_fallback(chunk, custom_groq_key=x_groq_api_key, custom_cf_token=x_cf_api_token)
+                result = await transcribe_audio_with_fallback(
+                    chunk,
+                    custom_groq_key=x_groq_api_key,
+                    custom_cf_token=x_cf_api_token,
+                    language=target_language,
+                )
                 full_transcript.append(result["transcript"])
                 for seg in result.get("segments", []):
                     seg_copy = dict(seg)
@@ -409,7 +422,12 @@ async def upload_audio(
             chunks = await asyncio.to_thread(process_and_chunk_audio, tmp_path, 20 * 60 * 1000, job_dir)
             full_transcript = []
             for chunk in chunks:
-                result = await transcribe_audio_with_fallback(chunk, custom_groq_key=x_groq_api_key, custom_cf_token=x_cf_api_token)
+                result = await transcribe_audio_with_fallback(
+                    chunk,
+                    custom_groq_key=x_groq_api_key,
+                    custom_cf_token=x_cf_api_token,
+                    language=target_language,
+                )
                 full_transcript.append(result["transcript"])
                 for seg in result.get("segments", []):
                     seg_copy = dict(seg)
